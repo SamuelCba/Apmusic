@@ -334,7 +334,7 @@ class _EmptySearch extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'No local MP3 matches "$query".',
-            style: const TextStyle(color: Colors.white45, fontSize: 15),
+            style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 15),
           ),
         ],
       ),
