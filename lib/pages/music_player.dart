@@ -467,6 +467,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
   bool _isLocalTrack = false;
   bool _showLyrics = false;
   bool _queuePageActive = false;
+  double _dragOffset = 0.0;
   bool _lyricsLoading = false;
   String? _lyricsError;
   LyricsData? _lyricsData;
@@ -866,6 +867,22 @@ class _MusicPlayerState extends State<MusicPlayer> {
     );
   }
 
+  void _handleHandleDragUpdate(DragUpdateDetails details) {
+    final delta = details.primaryDelta ?? 0;
+    if (delta > 0) {
+      setState(() => _dragOffset = (_dragOffset + delta).clamp(0.0, 320.0));
+    }
+  }
+
+  void _handleHandleDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    if (_dragOffset > 90 || velocity > 500) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() => _dragOffset = 0.0);
+    }
+  }
+
   void _showAirPlayNotice() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('AirPlay controls are visual in this build.')),
@@ -1254,12 +1271,14 @@ class _MusicPlayerState extends State<MusicPlayer> {
   }
 
   Widget _buildTopHandle() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 22),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: _handleHandleDragUpdate,
+      onVerticalDragEnd: _handleHandleDragEnd,
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 22),
+        child: Center(
+          child: Container(
             width: 48,
             height: 5,
             decoration: BoxDecoration(
@@ -1267,18 +1286,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
               borderRadius: BorderRadius.circular(999),
             ),
           ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: IconButton(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: Colors.white70,
-                size: 32,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1499,22 +1507,25 @@ class _MusicPlayerState extends State<MusicPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF121212),
-      body: _buildBackground(
-        child: PageView(
-          controller: _playerPageController,
-          scrollDirection: Axis.vertical,
-          onPageChanged: (index) {
-            setState(() {
-              _queuePageActive = index == 1;
-              if (index == 1) _showLyrics = false;
-            });
-          },
-          children: [
-            _buildNowPlayingPage(),
-            _buildQueuePage(),
-          ],
+    return Transform.translate(
+      offset: Offset(0, _dragOffset),
+      child: Scaffold(
+        backgroundColor: const Color(0xFF121212),
+        body: _buildBackground(
+          child: PageView(
+            controller: _playerPageController,
+            scrollDirection: Axis.vertical,
+            onPageChanged: (index) {
+              setState(() {
+                _queuePageActive = index == 1;
+                if (index == 1) _showLyrics = false;
+              });
+            },
+            children: [
+              _buildNowPlayingPage(),
+              _buildQueuePage(),
+            ],
+          ),
         ),
       ),
     );

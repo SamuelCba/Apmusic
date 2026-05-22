@@ -45,18 +45,25 @@ class _FirstPageState extends State<FirstPage> {
   void _openPlayer() {
     Navigator.of(context).push(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 460),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 520),
+        reverseTransitionDuration: const Duration(milliseconds: 380),
         pageBuilder: (_, __, ___) => const WebView(child: MusicPlayer()),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+          final fadeIn = CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
+          );
           return FadeTransition(
-            opacity: curved,
+            opacity: fadeIn,
             child: ScaleTransition(
-              scale: Tween<double>(begin: 0.88, end: 1).animate(curved),
+              scale: Tween<double>(begin: 0.72, end: 1.0).animate(curved),
               alignment: Alignment.bottomCenter,
               child: SlideTransition(
-                position: Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero).animate(curved),
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.30),
+                  end: Offset.zero,
+                ).animate(curved),
                 child: child,
               ),
             ),
@@ -358,6 +365,7 @@ class _MiniArtwork extends StatelessWidget {
         artworkWidth: 38,
         artworkHeight: 38,
         quality: 100,
+        artworkBorder: BorderRadius.zero,
         nullArtworkWidget: const _MiniArtworkFallback(),
         errorBuilder: (_, __, ___) => const _MiniArtworkFallback(),
       );
