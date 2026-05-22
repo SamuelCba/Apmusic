@@ -38,6 +38,7 @@ dependencies:
   # audioplayers: ^5.2.1
   http: ^1.2.1
   glassmorphism_widgets: ^0.2.2
+  liquid_glass_widgets: ^0.9.1
   sticky_headers: ^0.3.0+2
   glassmorphism: ^3.0.0
   # icons_plus: ^5.0.0

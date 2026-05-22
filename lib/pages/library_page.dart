@@ -1,8 +1,10 @@
-import 'dart:math';
+import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:on_audio_query_forked/on_audio_query.dart';
+import 'package:musicplayer/services/music_library_controller.dart';
 import 'package:musicplayer/widgets/music_library_sheets.dart';
 // import 'package:icons_flutter/icons_flutter.dart';
 
@@ -14,7 +16,14 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  final MusicLibraryController _musicLibraryController = MusicLibraryController.instance;
+
   @override
+  void initState() {
+    super.initState();
+    unawaited(_musicLibraryController.ensureLoaded());
+  }
+
   List song = [
     {
       "id": "wake_up_01",
@@ -636,60 +645,87 @@ class _LibraryPageState extends State<LibraryPage> {
                     SizedBox(
                       // color: Color.fromARGB(255, 5, 69, 68),
                       height: 250,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.all(10),
-                        itemCount: 10,
-                        itemBuilder: (context, index) {
-                          int randomIndex = Random().nextInt(song.length);
+                      child: AnimatedBuilder(
+                        animation: _musicLibraryController,
+                        builder: (context, _) {
+                          final songs = _musicLibraryController.visibleSongs.take(12).toList();
+                          if (songs.isEmpty) {
+                            return const Center(
+                              child: Text(
+                                'No MP3 files in active folders.',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            );
+                          }
 
-                          return Container(
-                            // color: Colors.amber,
-                            margin: const EdgeInsets.only(right: 10, left: 6),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(
-                                  height: 10,
-                                ),
-                                ClipPath(
-                                  clipper: ShapeBorderClipper(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  child: CachedNetworkImage(
-                                    placeholder: (context, url) => const CircularProgressIndicator(),
-                                    errorWidget: (context, url, error) => const Icon(Icons.error),
-                                    imageUrl: song[randomIndex]['image'],
-                                    height: 170,
-                                    width: 170,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Padding(padding: EdgeInsets.only(top: 2.5)),
-                                    SizedBox(
-                                      width: 165,
-                                      // color: Colors.amberAccent,
-                                      child: Text(
-                                        song[randomIndex]['title'],
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 15, color: Colors.white),
+                          return ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.all(10),
+                            itemCount: songs.length,
+                            itemBuilder: (context, index) {
+                              final localSong = songs[index];
+                              return GestureDetector(
+                                onTap: () {
+                                  Navigator.pushNamed(context, '/player', arguments: {
+                                    'source': localSong.data,
+                                    'title': localSong.title,
+                                    'artist': localSong.artist ?? 'Unknown artist',
+                                    'album': localSong.album ?? 'Unknown album',
+                                    'artworkId': localSong.id,
+                                    'isLocal': true,
+                                  });
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(right: 10, left: 6),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 10),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: QueryArtworkWidget(
+                                          id: localSong.id,
+                                          type: ArtworkType.AUDIO,
+                                          artworkWidth: 170,
+                                          artworkHeight: 170,
+                                          artworkFit: BoxFit.cover,
+                                          quality: 100,
+                                          nullArtworkWidget: Container(
+                                            height: 170,
+                                            width: 170,
+                                            color: const Color(0xFF202020),
+                                            child: const Icon(Icons.music_note_rounded, color: Colors.white54, size: 54),
+                                          ),
+                                          errorBuilder: (_, __, ___) => Container(
+                                            height: 170,
+                                            width: 170,
+                                            color: const Color(0xFF202020),
+                                            child: const Icon(Icons.music_note_rounded, color: Colors.white54, size: 54),
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      song[randomIndex]['artist'],
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12, color: Colors.grey),
-                                    ),
-                                  ],
-                                )
-                              ],
-                            ),
+                                      const SizedBox(height: 6),
+                                      SizedBox(
+                                        width: 165,
+                                        child: Text(
+                                          localSong.title,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 15, color: Colors.white),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: 165,
+                                        child: Text(
+                                          localSong.artist ?? 'Unknown artist',
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12, color: Colors.grey),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
                       ),

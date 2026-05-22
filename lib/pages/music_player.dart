@@ -8,6 +8,7 @@ import 'package:on_audio_query_forked/on_audio_query.dart';
 
 import '../models/lyrics.dart';
 import '../services/music_library_controller.dart';
+import '../services/playback_controller.dart';
 import '../services/lyrics_service.dart';
 import '../widgets/apple_music_player_widgets.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -454,6 +455,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
 
   //variable for music audioPlayer
   late final AudioPlayer audioPlayer;
+  final PlaybackController _playbackController = PlaybackController.instance;
   final OnAudioQuery _audioQuery = OnAudioQuery();
   final MusicLibraryController _libraryController = MusicLibraryController.instance;
   final PageController _playerPageController = PageController();
@@ -478,12 +480,16 @@ class _MusicPlayerState extends State<MusicPlayer> {
   final ScrollController _lyricsScrollController = ScrollController();
   final Map<int, GlobalKey> _lyricKeys = {};
   final LyricsService _lyricsService = const LyricsService();
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  StreamSubscription<Duration?>? _durationSubscription;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<ProcessingState>? _processingStateSubscription;
 
   @override
   void initState() {
     super.initState();
     // Initialize audio player
-    audioPlayer = AudioPlayer();
+    audioPlayer = _playbackController.audioPlayer;
     unawaited(audioPlayer.setVolume(_volume));
     unawaited(_libraryController.ensureLoaded());
     setupAudioPlayer();
@@ -511,6 +517,23 @@ class _MusicPlayerState extends State<MusicPlayer> {
         changeImage(currentIndex);
         _loadSong(currentIndex);
       } else {
+        if (_playbackController.hasTrack) {
+          setState(() {
+            _isLocalTrack = _playbackController.isLocalTrack;
+            _localSource = _playbackController.source;
+            _localTitle = _playbackController.title;
+            _localArtist = _playbackController.artist;
+            _localAlbum = _playbackController.album;
+            _localArtworkId = _playbackController.artworkId;
+            if (!_playbackController.isLocalTrack && _playbackController.remoteIndex != null) {
+              currentIndex = _playbackController.remoteIndex!;
+            }
+            isPlaying = _playbackController.isPlaying;
+            duration = _playbackController.duration;
+            position = _playbackController.position;
+          });
+          return;
+        }
         _isLocalTrack = false;
         _showLyrics = false;
         _updatePaletteGenerator(currentIndex);
@@ -523,7 +546,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
 
   void setupAudioPlayer() {
     // Listen to player state changes
-    audioPlayer.playerStateStream.listen((PlayerState state) {
+    _playerStateSubscription = audioPlayer.playerStateStream.listen((PlayerState state) {
       if (!mounted) return;
       setState(() {
         isPlaying = state.playing;
@@ -531,7 +554,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
     });
 
     // Listen to duration changes
-    audioPlayer.durationStream.listen((newDuration) {
+    _durationSubscription = audioPlayer.durationStream.listen((newDuration) {
       if (!mounted) return;
       setState(() {
         duration = newDuration ?? Duration.zero;
@@ -539,7 +562,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
     });
 
     // Listen to position changes
-    audioPlayer.positionStream.listen((newPosition) {
+    _positionSubscription = audioPlayer.positionStream.listen((newPosition) {
       if (!mounted) return;
       setState(() {
         position = newPosition;
@@ -548,7 +571,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
     });
 
     // Listen to sequence state for completion
-    audioPlayer.processingStateStream.listen((state) {
+    _processingStateSubscription = audioPlayer.processingStateStream.listen((state) {
       if (!mounted) return;
       if (state == ProcessingState.completed) {
         setState(() {
@@ -567,9 +590,12 @@ class _MusicPlayerState extends State<MusicPlayer> {
 
   @override
   void dispose() {
+    _playerStateSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _processingStateSubscription?.cancel();
     _playerPageController.dispose();
     _lyricsScrollController.dispose();
-    audioPlayer.dispose();
     super.dispose();
   }
 
@@ -583,6 +609,15 @@ class _MusicPlayerState extends State<MusicPlayer> {
       _activeLyricIndex = -1;
       currentIndex = index;
     });
+    _playbackController.setMetadata(
+      title: song[index]['title'].toString(),
+      artist: song[index]['artist'].toString(),
+      album: song[index]['album'].toString(),
+      isLocalTrack: false,
+      source: song[index]['source'].toString(),
+      artworkUrl: song[index]['image'].toString(),
+      remoteIndex: index,
+    );
 
     try {
       await audioPlayer.stop();
@@ -622,6 +657,14 @@ class _MusicPlayerState extends State<MusicPlayer> {
       _lyricsError = null;
       _activeLyricIndex = -1;
     });
+    _playbackController.setMetadata(
+      title: _localTitle ?? 'Local track',
+      artist: _localArtist ?? 'Unknown artist',
+      album: _localAlbum ?? 'Unknown album',
+      isLocalTrack: true,
+      source: source,
+      artworkId: _localArtworkId,
+    );
 
     try {
       await audioPlayer.stop();
@@ -881,6 +924,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
           artworkWidth: size,
           artworkHeight: size,
           artworkFit: BoxFit.cover,
+          quality: 100,
           controller: _audioQuery,
           nullArtworkWidget: _artworkPlaceholder(size),
           errorBuilder: (_, __, ___) => _artworkPlaceholder(size),

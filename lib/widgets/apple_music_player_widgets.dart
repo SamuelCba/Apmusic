@@ -344,7 +344,7 @@ class SongListTile extends StatelessWidget {
                 artworkWidth: 54,
                 artworkHeight: 54,
                 artworkFit: BoxFit.cover,
-                quality: 50,
+                quality: 100,
                 nullArtworkWidget: _ArtworkFallback(size: 54),
                 errorBuilder: (_, __, ___) => _ArtworkFallback(size: 54),
               ),
