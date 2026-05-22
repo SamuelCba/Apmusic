@@ -1,0 +1,960 @@
+/// Apple Music iOS 26 — High-Fidelity Demo
+///
+/// Animation architecture:
+///   • `GlassSearchableBottomBar` uses `isSearchActive: _isMiniMode || _isSearching`
+///     so the tabs spring-collapse whenever scrolled OR searching — matching the
+///     iOS 26 morphing animation exactly.
+///
+///   • Two play bar pills work in concert:
+///       1. Body-Stack pill   — full-width, floats ABOVE the nav bar when not mini.
+///          On scroll it AnimatedPositioned DOWN to bar level + AnimatedOpacity 0.
+///       2. NavBar-Stack pill — lives INSIDE the bottomNavigationBar SizedBox Stack
+///          so it receives taps even in the nav-bar hit-test zone.  It AnimatedOpacity
+///          fades IN when mini, always sitting at bar-pill level.
+///
+///     Together they create the illusion of "the bar collapses, the play pill slides
+///     into the gap", with the handoff invisible to the user.
+///
+///   • A small search GlassButton is also inside the NavBar Stack at the right
+///     edge — visible only in mini mode to match the iOS 26 [Home][Play][Search] row.
+///
+/// Run standalone:
+///   flutter run -t lib/apple_music/apple_music_demo.dart
+library;
+
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const _kMusicRed = Color(0xFFFA2D48);
+const _kBackground = Color(0xFF000000);
+const _kCardGray = Color(0xFF2C2C2E);
+
+const _kBarH = 64.0;
+const _kPaddingH = 20.0;
+const _kPaddingV = 16.0;
+const _kSpacing = 8.0;
+
+/// Glass shared by every pill (play bar, home icon, search icon).
+const _kPillGlass = LiquidGlassSettings(
+  glassColor: Color(0xCC1C1C1E),
+  thickness: 30,
+  blur: 3,
+  lightIntensity: 0.35,
+  chromaticAberration: .01,
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APP
+// ─────────────────────────────────────────────────────────────────────────────
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await LiquidGlassWidgets.initialize();
+  runApp(LiquidGlassWidgets.wrap(
+    child: const AppleMusicDemoApp(),
+    adaptiveQuality: true,
+    // ignore: experimental_member_use
+    adaptiveConfig: const GlassAdaptiveScopeConfig(
+      // Left on intentionally for 0.9.1 — helps gather diagnostics
+      // if the adaptive threshold fix doesn't hold on all hardware.
+      debugLogDiagnostics: true,
+    ),
+  ));
+}
+
+class AppleMusicDemoApp extends StatelessWidget {
+  const AppleMusicDemoApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Apple Music',
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: _kBackground,
+        colorScheme: const ColorScheme.dark(
+          primary: _kMusicRed,
+          surface: _kBackground,
+        ),
+      ),
+      home: const AppleMusicHomeScreen(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HOME SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
+class AppleMusicHomeScreen extends StatefulWidget {
+  const AppleMusicHomeScreen({super.key});
+
+  @override
+  State<AppleMusicHomeScreen> createState() => _AppleMusicHomeScreenState();
+}
+
+class _AppleMusicHomeScreenState extends State<AppleMusicHomeScreen> {
+  final ScrollController _scrollController = ScrollController();
+  final ScrollController _radioScrollController = ScrollController();
+  final ScrollController _libraryScrollController = ScrollController();
+  final FocusNode _searchFocusNode = FocusNode();
+
+  bool _isMiniMode = false;
+  bool _isSearching = false;
+  bool _searchFieldFocused = false;
+  int _selectedTab = 0;
+
+  static const _kTabs = [
+    GlassBottomBarTab(
+      label: 'Home',
+      icon: Icon(CupertinoIcons.house),
+      activeIcon: Icon(CupertinoIcons.house_fill),
+    ),
+    GlassBottomBarTab(
+      label: 'Radio',
+      icon: Icon(CupertinoIcons.antenna_radiowaves_left_right),
+    ),
+    GlassBottomBarTab(
+      label: 'Library',
+      icon: Icon(CupertinoIcons.music_albums),
+      activeIcon: Icon(CupertinoIcons.music_albums_fill),
+    ),
+  ];
+
+  ScrollController get _activeScrollController => switch (_selectedTab) {
+        1 => _radioScrollController,
+        2 => _libraryScrollController,
+        _ => _scrollController,
+      };
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _radioScrollController.addListener(_onScroll);
+    _libraryScrollController.addListener(_onScroll);
+    _searchFocusNode.addListener(_onFocusChange);
+  }
+
+  void _onScroll() {
+    final ctrl = _activeScrollController;
+    final mini = ctrl.hasClients && ctrl.offset > 50;
+    if (mini == _isMiniMode) return;
+    setState(() => _isMiniMode = mini);
+  }
+
+  void _onFocusChange() {
+    setState(() => _searchFieldFocused = _searchFocusNode.hasFocus);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    _radioScrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    _libraryScrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    _searchFocusNode
+      ..removeListener(_onFocusChange)
+      ..dispose();
+    super.dispose();
+  }
+
+  LiquidGlassSettings get _barGlassSettings => LiquidGlassSettings(
+        glassColor: const Color(0xAA1C1C1E),
+        thickness: 30,
+        blur: 2,
+        chromaticAberration: .01,
+        lightAngle: GlassDefaults.lightAngle,
+        lightIntensity: .5,
+        ambientStrength: 0,
+        refractiveIndex: 1.2,
+        saturation: 1.2,
+        specularSharpness: GlassSpecularSharpness.medium,
+      );
+
+  // ── Public actions ────────────────────────────────────────────────────────
+
+  /// Called when user taps the collapsed home-tab pill in mini mode.
+  void _dismissMiniMode() {
+    // Scroll whichever tab is currently active back to top.
+    // Previously this hardcoded _scrollController (home tab), so tapping
+    // Radio/Library in mini mode animated the wrong controller and _onScroll
+    // never saw offset drop below 50 → mini mode stayed stuck.
+    final ctrl = _activeScrollController;
+    if (ctrl.hasClients) {
+      ctrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutQuart,
+      );
+    }
+    setState(() {
+      _isMiniMode =
+          false; // reset immediately; _onScroll confirms on next frame
+      _isSearching = false;
+      _searchFieldFocused = false;
+    });
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    // iOS native design floats the pill over the home indicator (ignoring safe area).
+    // Android 3-button nav requires us to clear the opaque system buttons.
+    // On gesture-nav devices safeBottom is 0, so no offset is applied.
+    final platform = Theme.of(context).platform;
+    final isIOS =
+        platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
+    final sysBottom = isIOS ? 0.0 : MediaQuery.viewPaddingOf(context).bottom;
+
+    // GlassSearchableBottomBar handles keyboard avoidance internally (floatY),
+    // so we only need to push the wrapper up by the system nav bar height.
+    final bottomOffset = sysBottom;
+
+    const double expandedNavBarH = 40 + 2 * _kPaddingV; // 72.0
+    const double collapsedNavBarH = 60.0; // searchBarHeight
+
+    // Gap b
+    const double pillGap = 14.0;
+
+    // aboveBarBottom: shifts down when search is active because the bar is
+    // shorter (50px vs 72px), so we anchor to whichever height is current.
+    final double activeNavBarH =
+        _isSearching ? collapsedNavBarH : expandedNavBarH;
+    final double aboveBarBottom = activeNavBarH + pillGap + bottomOffset;
+
+    // miniBarBottom: position of the pill row inside the body Stack.
+    final double miniBarBottom = _kPaddingV + bottomOffset;
+
+    // contentPad: extra bottom space so the last sliver scrolls above all bars.
+    final double contentPad = aboveBarBottom + 50.0 + 8.0;
+
+    // The collapsed home/search pills render at searchBarHeight (50), not _kBarH (64).
+    // Using _kBarH here causes an ~18px gap; 50+6 gives the tight ~6px Apple uses.
+    const double collapsedPillW = 50.0;
+    final double miniPlayLeft = _kPaddingH + collapsedPillW + 6.0;
+    final double miniPlayRight = _kPaddingH + collapsedPillW + 6.0;
+
+    return Scaffold(
+      backgroundColor: _kBackground,
+      extendBody: true,
+      resizeToAvoidBottomInset: false,
+
+      // ── Body ────────────────────────────────────────────────────────────────
+      body: Stack(
+        children: [
+          // ── Scrollable content ─────────────────────────────────────────────
+          GestureDetector(
+            onTap: () {
+              if (_searchFieldFocused) {
+                FocusManager.instance.primaryFocus?.unfocus();
+              }
+            },
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, animation) =>
+                  FadeTransition(opacity: animation, child: child),
+              child: !_isSearching
+                  ? switch (_selectedTab) {
+                      1 => _buildRadioView(
+                          key: const ValueKey('radio'), contentPad: contentPad),
+                      2 => _buildLibraryView(
+                          key: const ValueKey('library'),
+                          contentPad: contentPad),
+                      _ => _buildHomeView(
+                          key: const ValueKey('home'), contentPad: contentPad),
+                    }
+                  : _searchFieldFocused
+                      ? _buildNoRecentSearches(key: const ValueKey('no-recent'))
+                      : _buildSearchBrowseView(
+                          key: const ValueKey('search-browse'),
+                          contentPad: contentPad),
+            ),
+          ),
+
+          // ── Body play pill ─────────────────────────────────────────────────
+          // Drawn FIRST (below in z-order) so the nav bar's animated indicator
+          // always paints on top of the play pill during tab transitions.
+          // In mini mode it slides down into the gap between Home and Search pills.
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeInOutCubic,
+            // When search activates from mini mode, animate the play bar back
+            // to its full-width position above the expanded search field —
+            // matching real Apple Music (screenshot 2). Only use mini
+            // positioning when mini AND not searching.
+            bottom:
+                (_isMiniMode && !_isSearching) ? miniBarBottom : aboveBarBottom,
+            left: (_isMiniMode && !_isSearching) ? miniPlayLeft : _kPaddingH,
+            right: (_isMiniMode && !_isSearching) ? miniPlayRight : _kPaddingH,
+            height: 50.0,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              // Real Apple Music: play pill stays visible in search-ready state
+              // (keyboard dismissed). Only hide when keyboard is actively up.
+              opacity: _searchFieldFocused ? 0.0 : 1.0,
+              child: IgnorePointer(
+                ignoring: _searchFieldFocused,
+                child: _PlayBarPill(
+                  onTap: () {
+                    if (_isMiniMode) {
+                      _dismissMiniMode();
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+
+          // ── Bottom navigation bar ──────────────────────────────────────────────
+          // Drawn LAST (highest z-order) so its animated tab indicator always
+          // renders on top of the floating play pill during tab transitions.
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutQuart,
+            bottom: bottomOffset,
+            left: 0,
+            right: 0,
+            child: GlassSearchableBottomBar(
+              // KEY: triggers the beautiful spring tab-collapse on scroll TOO.
+              isSearchActive: _isMiniMode || _isSearching,
+              selectedIndex: _selectedTab,
+              onTabSelected: (index) {
+                if (index == _selectedTab && _isMiniMode) {
+                  _dismissMiniMode();
+                } else {
+                  final ctrl = switch (index) {
+                    1 => _radioScrollController,
+                    2 => _libraryScrollController,
+                    _ => _scrollController,
+                  };
+                  // Mini mode is driven by the new tab's scroll position.
+                  final newMini = ctrl.hasClients && ctrl.offset > 50;
+                  setState(() {
+                    _selectedTab = index;
+                    _isSearching = false;
+                    _isMiniMode = newMini;
+                  });
+                }
+              },
+              barHeight: _kBarH,
+              searchBarHeight: 50.0,
+              horizontalPadding: _kPaddingH,
+              verticalPadding: _kPaddingV,
+              spacing: _kSpacing,
+              selectedIconColor: _kMusicRed,
+              unselectedIconColor: Colors.white.withValues(alpha: 0.9),
+              indicatorColor: Colors.white.withValues(alpha: 0.20),
+              labelFontSize: 10,
+              iconSize: 28,
+              iconLabelSpacing: 0,
+              quality: GlassQuality.premium,
+              interactionBehavior: GlassInteractionBehavior.full,
+              glassSettings: _barGlassSettings,
+              searchConfig: GlassSearchBarConfig(
+                focusNode: _searchFocusNode,
+                autoFocusOnExpand: false,
+                showsCancelButton: true,
+                // When in mini mode but NOT searching, prevent the search pill from expanding.
+                expandWhenActive: !_isMiniMode || _isSearching,
+                hintText: 'Apple Music',
+                onSearchToggle: (active) {
+                  if (active) {
+                    setState(() => _isSearching = true);
+                  } else {
+                    setState(() {
+                      _isSearching = false;
+                      _searchFieldFocused = false;
+                    });
+                    // Home pill tapped in mini mode → always restore full bar,
+                    // whether coming from search or scroll-collapse state.
+                    if (_isMiniMode) _dismissMiniMode();
+                  }
+                },
+                onSearchFocusChanged: (focused) =>
+                    setState(() => _searchFieldFocused = focused),
+                searchIconColor: Colors.white.withValues(alpha: 0.9),
+                textInputAction: TextInputAction.search,
+                // Apple Music specific: show selected (red) icon in scroll-collapse
+                // mini mode, but white when search is actively expanded.
+                // The library default uses unselectedIconColor which is correct
+                // for the search state — we only override for mini mode.
+                collapsedLogoBuilder: (context) {
+                  final tab = _kTabs[_selectedTab];
+                  final iconColor = _isMiniMode && !_isSearching
+                      ? _kMusicRed
+                      : Colors.white.withValues(alpha: 0.9);
+                  return Center(
+                    child: IconTheme(
+                      data: IconThemeData(color: iconColor, size: 28),
+                      child: tab.activeIcon ?? tab.icon,
+                    ),
+                  );
+                },
+              ),
+              tabs: _kTabs,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Page views ────────────────────────────────────────────────────────────
+
+  Widget _buildHomeView({Key? key, required double contentPad}) {
+    return CustomScrollView(
+      key: key,
+      controller: _scrollController,
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(height: MediaQuery.paddingOf(context).top + 8),
+        ),
+        SliverToBoxAdapter(child: _buildListenNowHeader()),
+        SliverToBoxAdapter(
+          child: _HeroCard(
+            title: 'Music just for you.\n2 months free.',
+            subtitle: 'Accept Free Trial',
+            subtext: '2 months free, then \$12.99/month',
+            color: _kMusicRed,
+            child: const _AppleMusicLogo(),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: _HeroCard(
+            title: 'Music for the whole\nfamily. 2 months free.',
+            subtitle: 'Accept Free Trial',
+            subtext: '2 months free, then \$19.99/month',
+            color: _kCardGray,
+            showBorder: true,
+            child: const Icon(
+              CupertinoIcons.person_3_fill,
+              color: _kMusicRed,
+              size: 240,
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(child: SizedBox(height: contentPad)),
+      ],
+    );
+  }
+
+  Widget _buildRadioView({Key? key, required double contentPad}) {
+    final stations = [
+      ('Apple Music 1', 'Global Pop', CupertinoIcons.dot_radiowaves_left_right),
+      ('Apple Music Country', 'Country Hits', CupertinoIcons.music_note_2),
+      ('Apple Music Hits', 'All-Time Favourites', CupertinoIcons.star_fill),
+      ('Beats 1 Classics', 'Throwbacks', CupertinoIcons.clock_fill),
+      ('Chill Mix', 'Lo-fi & Ambient', CupertinoIcons.moon_fill),
+      ('Workout Mix', 'High Energy', CupertinoIcons.bolt_fill),
+      ('Late Night', 'R&B & Soul', CupertinoIcons.moon_stars_fill),
+      ('Discover', 'New Artists', CupertinoIcons.wand_stars),
+    ];
+    return CustomScrollView(
+      key: key,
+      controller: _radioScrollController,
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(height: MediaQuery.paddingOf(context).top + 8),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 16, 20),
+            child: const Text(
+              'Radio',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 34,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, contentPad),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) {
+                final s = stations[i % stations.length];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: _kCardGray,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: _kMusicRed.withValues(alpha: 0.8),
+                          borderRadius: const BorderRadius.horizontal(
+                              left: Radius.circular(14)),
+                        ),
+                        child: Icon(s.$3, color: Colors.white, size: 28),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(s.$1,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15)),
+                            Text(s.$2,
+                                style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.55),
+                                    fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              childCount: stations.length * 3,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLibraryView({Key? key, required double contentPad}) {
+    const sections = [
+      'Recently Added',
+      'Artists',
+      'Albums',
+      'Songs',
+      'Playlists',
+      'Music Videos',
+      'Compilations',
+      'Downloaded',
+    ];
+    return CustomScrollView(
+      key: key,
+      controller: _libraryScrollController,
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(height: MediaQuery.paddingOf(context).top + 8),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 16, 8),
+            child: const Text(
+              'Library',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 34,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(0, 0, 0, contentPad),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => Column(
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      CupertinoIcons.music_albums_fill,
+                      color: _kMusicRed,
+                    ),
+                    title: Text(
+                      sections[i % sections.length],
+                      style: const TextStyle(color: Colors.white, fontSize: 17),
+                    ),
+                    trailing: const Icon(CupertinoIcons.chevron_forward,
+                        color: Colors.white38, size: 16),
+                  ),
+                  Divider(
+                      height: 1,
+                      color: Colors.white.withValues(alpha: 0.1),
+                      indent: 56),
+                ],
+              ),
+              childCount: sections.length * 4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildListenNowHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 16, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            'Listen Now',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 34,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              color: Color(0xFF4C4556),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              'SD',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBrowseView({Key? key, required double contentPad}) {
+    return CustomScrollView(
+      key: key,
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(height: MediaQuery.paddingOf(context).top + 8),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 16, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.apple, color: Colors.white, size: 22),
+                    SizedBox(width: 4),
+                    Text(
+                      'Music',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Search',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 34,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, contentPad),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 1.65,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _BrowseCategory(
+                name: _kBrowseCategories[index].name,
+                color: _kBrowseCategories[index].color,
+              ),
+              childCount: _kBrowseCategories.length,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNoRecentSearches({Key? key}) {
+    final keyboardH = MediaQuery.viewInsetsOf(context).bottom;
+    return Container(
+      key: key,
+      color: Colors.black,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: keyboardH + 50),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(CupertinoIcons.search,
+                    size: 64, color: Colors.white.withValues(alpha: 0.35)),
+                const SizedBox(height: 16),
+                const Text(
+                  'No Recent Searches',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Your recent searches will appear here.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Category {
+  const _Category({required this.name, required this.color});
+  final String name;
+  final Color color;
+}
+
+const _kBrowseCategories = [
+  _Category(name: 'Pop', color: Color(0xFFFF2D55)),
+  _Category(name: 'Hip-Hop', color: Color(0xFF5856D6)),
+  _Category(name: 'Rock', color: Color(0xFF636366)),
+  _Category(name: 'Electronic', color: Color(0xFF007AFF)),
+  _Category(name: 'R&B / Soul', color: Color(0xFFAF52DE)),
+  _Category(name: 'Country', color: Color(0xFFFF9500)),
+  _Category(name: 'Jazz', color: Color(0xFF30B0C7)),
+  _Category(name: 'Classical', color: Color(0xFF34C759)),
+  _Category(name: 'Latin', color: Color(0xFFFF3B30)),
+  _Category(name: 'Alternative', color: Color(0xFF1C1C1E)),
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Play bar pill — shared by the floating body pill and the mini NavBar pill.
+class _PlayBarPill extends StatelessWidget {
+  const _PlayBarPill({this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassButton(
+      onTap: onTap ?? () {},
+      quality: GlassQuality.premium,
+      useOwnLayer: true,
+      shape: const LiquidRoundedSuperellipse(borderRadius: _kBarH / 2),
+      settings: _kPillGlass,
+      icon: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          children: [
+            // Album art
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFB22222), Color(0xFF4A0000)],
+                  ),
+                ),
+                child: const Icon(Icons.music_note,
+                    color: Colors.white70, size: 20),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // Title + artist
+            const Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Best of You',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'Foo Fighters',
+                    style: TextStyle(color: Colors.white60, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(CupertinoIcons.play_arrow_solid,
+                color: Colors.white, size: 24),
+            const SizedBox(width: 12),
+            const Icon(CupertinoIcons.forward_end_fill,
+                color: Colors.white60, size: 20),
+            const SizedBox(width: 2),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AppleMusicLogo extends StatelessWidget {
+  const _AppleMusicLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.apple, color: Colors.white, size: 56),
+        Text(
+          'Music',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 52,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -1,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String subtext;
+  final Color color;
+  final Widget child;
+  final bool showBorder;
+
+  const _HeroCard({
+    required this.title,
+    required this.subtitle,
+    required this.subtext,
+    required this.color,
+    required this.child,
+    this.showBorder = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      height: 400,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(24),
+        border: showBorder
+            ? Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 1.0,
+              )
+            : null,
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 24),
+      child: Column(
+        children: [
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
+          const Spacer(),
+          child,
+          const Spacer(),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtext,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrowseCategory extends StatelessWidget {
+  const _BrowseCategory({required this.name, required this.color});
+  final String name;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        color: color,
+        alignment: Alignment.bottomLeft,
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          name,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
