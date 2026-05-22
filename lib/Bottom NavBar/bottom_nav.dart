@@ -585,19 +585,6 @@ class _PersistentPlayerSheet extends StatelessWidget {
     final collapsedBottom = isMiniMode ? 16.0 + safeBottom : navOffset;
     final bottom = lerpDouble(collapsedBottom, 0, alpha)!;
     final horizontalMargin = lerpDouble(isMiniMode ? 76.0 : 16.0, 0, alpha)!;
-    final expandedArtworkSize = width * 0.85;
-    final expandedArtworkLeft = (width - expandedArtworkSize) / 2.0;
-    final expandedArtworkTop = _expandedTopArtwork;
-    final artworkSize = 48.0 + alpha * (expandedArtworkSize - 48.0);
-    final artworkLeft = lerpDouble(16.0, expandedArtworkLeft, alpha)!;
-    final artworkTop = lerpDouble(12.0, expandedArtworkTop, alpha)!;
-    final artworkRadius = 8.0 + alpha * 16.0;
-    const expandedTitleLeft = 22.0;
-    const expandedTitleRight = 132.0;
-    final expandedTitleTop = artworkTop + artworkSize + 30.0;
-    final titleLeft = lerpDouble(78.0, expandedTitleLeft, alpha)!;
-    final titleRight = lerpDouble(74.0, expandedTitleRight, alpha)!;
-    final titleTop = lerpDouble(10.0, expandedTitleTop, alpha)!;
     final maxiOpacity = _maxiOpacity(alpha);
     final gradientColors = controller.backgroundGradient;
 
@@ -622,95 +609,158 @@ class _PersistentPlayerSheet extends StatelessWidget {
                   color: Colors.white.withOpacity(lerpDouble(0.12, 0.0, alpha)!),
                 ),
               ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: Opacity(
-                      opacity: alpha * 0.55,
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
-                        child: _CoverArtwork(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(end: queueMode ? 1.0 : 0.0),
+                duration: const Duration(milliseconds: 560),
+                curve: Curves.easeOutBack,
+                builder: (context, queueValue, _) {
+                  final queueAlpha = queueValue.clamp(0.0, 1.0).toDouble();
+                  final expandedBaseArtworkSize = width * 0.85;
+                  final expandedArtworkSize = lerpDouble(expandedBaseArtworkSize, 74.0, queueValue)!;
+                  final expandedArtworkLeft = lerpDouble((width - expandedBaseArtworkSize) / 2.0, 22.0, queueValue)!;
+                  final expandedArtworkTop = lerpDouble(_expandedTopArtwork, 76.0, queueValue)!;
+                  final artworkSize = 48.0 + alpha * (expandedArtworkSize - 48.0);
+                  final artworkLeft = lerpDouble(16.0, expandedArtworkLeft, alpha)!;
+                  final artworkTop = lerpDouble(12.0, expandedArtworkTop, alpha)!;
+                  final artworkRadius = lerpDouble(8.0 + alpha * 16.0, 13.0, queueAlpha)!;
+                  final expandedTitleTopNormal = artworkTop + artworkSize + 30.0;
+                  final expandedTitleTopQueue = expandedArtworkTop + 7.0;
+                  final expandedTitleLeft = lerpDouble(22.0, 112.0, queueValue)!;
+                  final expandedTitleRight = lerpDouble(132.0, 118.0, queueAlpha)!;
+                  final expandedTitleTop = lerpDouble(expandedTitleTopNormal, expandedTitleTopQueue, queueValue)!;
+                  final titleLeft = lerpDouble(78.0, expandedTitleLeft, alpha)!;
+                  final titleRight = lerpDouble(74.0, expandedTitleRight, alpha)!;
+                  final titleTop = lerpDouble(10.0, expandedTitleTop, alpha)!;
+                  final queueListTop = expandedArtworkTop + 96.0;
+                  final queueListBottomY = titleTop + (queueMode ? 306.0 : 0.0);
+                  final queueListHeight = math.max(120.0, queueListBottomY - queueListTop);
+
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: Opacity(
+                          opacity: alpha * 0.55,
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+                            child: _CoverArtwork(
+                              controller: controller,
+                              width: width,
+                              height: MediaQuery.sizeOf(context).height,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color.lerp(const Color(0xFF1C1C1E), gradientColors[0], alpha)!,
+                                Color.lerp(const Color(0xFF171719), gradientColors[1], alpha)!,
+                                gradientColors[2],
+                              ],
+                              stops: const [0, 0.48, 1],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 23,
+                        left: (width - 64) / 2,
+                        width: 64,
+                        height: 6,
+                        child: Opacity(
+                          opacity: alpha,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.38),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: expandedArtworkTop + 2,
+                        right: 16,
+                        child: IgnorePointer(
+                          ignoring: queueAlpha == 0,
+                          child: Opacity(
+                            opacity: queueAlpha * alpha,
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  onPressed: () {},
+                                  icon: const Icon(CupertinoIcons.star, color: Colors.white70, size: 23),
+                                ),
+                                IconButton(
+                                  onPressed: () {},
+                                  icon: const Icon(CupertinoIcons.ellipsis, color: Colors.white70, size: 24),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 22,
+                        right: 22,
+                        top: queueListTop,
+                        height: queueListHeight,
+                        child: IgnorePointer(
+                          ignoring: queueAlpha == 0,
+                          child: Opacity(
+                            opacity: queueAlpha * alpha,
+                            child: _InlineQueuePanel(controller: controller),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: artworkLeft,
+                        top: artworkTop,
+                        width: artworkSize,
+                        height: artworkSize,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(artworkRadius),
+                          child: _PlayerArtwork(
+                            controller: controller,
+                            size: artworkSize,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: titleLeft,
+                        right: titleRight,
+                        top: titleTop,
+                        child: _TransformingTrackTitle(
                           controller: controller,
-                          width: width,
-                          height: MediaQuery.sizeOf(context).height,
+                          progress: alpha,
                         ),
                       ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Color.lerp(const Color(0xFF1C1C1E), gradientColors[0], alpha)!,
-                            Color.lerp(const Color(0xFF171719), gradientColors[1], alpha)!,
-                            gradientColors[2],
-                          ],
-                          stops: const [0, 0.48, 1],
+                      Positioned(
+                        left: 22,
+                        right: 22,
+                        top: titleTop,
+                        bottom: math.max(18.0, safeBottom + 18),
+                        child: IgnorePointer(
+                          ignoring: maxiOpacity == 0,
+                          child: Opacity(
+                            opacity: maxiOpacity,
+                            child: _ExpandedPlayerControls(
+                              controller: controller,
+                              onCollapse: onCollapse,
+                              queueMode: queueMode,
+                              onQueueModeChanged: onQueueModeChanged,
+                              formatDuration: _format,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  Positioned(
-                    top: 11,
-                    left: (width - 42) / 2,
-                    width: 42,
-                    height: 5,
-                    child: Opacity(
-                      opacity: alpha,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.34),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: artworkLeft,
-                    top: artworkTop,
-                    width: artworkSize,
-                    height: artworkSize,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(artworkRadius),
-                      child: _PlayerArtwork(
-                        controller: controller,
-                        size: artworkSize,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: titleLeft,
-                    right: titleRight,
-                    top: titleTop,
-                    child: _TransformingTrackTitle(
-                      controller: controller,
-                      progress: alpha,
-                    ),
-                  ),
-                  Positioned(
-                    left: 22,
-                    right: 22,
-                    top: titleTop,
-                    bottom: math.max(18.0, safeBottom + 18),
-                    child: IgnorePointer(
-                      ignoring: maxiOpacity == 0,
-                      child: Opacity(
-                        opacity: maxiOpacity,
-                        child: _ExpandedPlayerControls(
-                          controller: controller,
-                          onCollapse: onCollapse,
-                          queueMode: queueMode,
-                          onQueueModeChanged: onQueueModeChanged,
-                          formatDuration: _format,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -795,21 +845,27 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            IconButton(
-              onPressed: () {},
-              icon: const Icon(CupertinoIcons.star, color: Colors.white70),
-            ),
-            IconButton(
-              onPressed: () {},
-              icon: const Icon(CupertinoIcons.ellipsis, color: Colors.white70),
-            ),
+            if (!widget.queueMode) ...[
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(CupertinoIcons.star, color: Colors.white70),
+              ),
+              IconButton(
+                onPressed: () {},
+                icon: const Icon(CupertinoIcons.ellipsis, color: Colors.white70),
+              ),
+            ],
             IconButton(
               onPressed: widget.onCollapse,
               icon: const Icon(CupertinoIcons.chevron_down, color: Colors.white70),
             ),
           ],
         ),
-        const SizedBox(height: 52),
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 520),
+          curve: Curves.easeOutCubic,
+          height: widget.queueMode ? 270 : 52,
+        ),
         StreamBuilder<Duration>(
           stream: controller.audioPlayer.positionStream,
           initialData: controller.position,
@@ -886,15 +942,7 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
             ),
           ],
         ),
-        if (widget.queueMode)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 10),
-              child: _InlineQueuePanel(controller: controller),
-            ),
-          )
-        else
-          const Spacer(),
+        const Spacer(),
         Row(
           children: [
             const Icon(Icons.volume_down_rounded, color: Colors.white54, size: 20),
