@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:musicplayer/webView/webViewContainer.dart';
+import 'package:musicplayer/widgets/music_library_sheets.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -625,7 +626,7 @@ class _HomePageState extends State<HomePage> {
             // color: Colors.amber,
             padding: const EdgeInsets.only(right: 5),
             child: IconButton(
-                onPressed: () {},
+                onPressed: () => showAccountMenuSheet(context),
                 icon: const Icon(
                   Icons.account_circle_rounded,
                   size: 40,

@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:musicplayer/widgets/music_library_sheets.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -148,7 +149,7 @@ class _SearchPageState extends State<SearchPage> {
             // color: Colors.amber,
             padding: const EdgeInsets.only(right: 5),
             child: IconButton(
-                onPressed: () {},
+                onPressed: () => showAccountMenuSheet(context),
                 icon: const Icon(
                   Icons.account_circle_rounded,
                   size: 40,

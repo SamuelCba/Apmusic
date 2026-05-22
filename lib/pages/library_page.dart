@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:musicplayer/widgets/music_library_sheets.dart';
 // import 'package:icons_flutter/icons_flutter.dart';
 
 class LibraryPage extends StatefulWidget {
@@ -460,7 +461,7 @@ class _LibraryPageState extends State<LibraryPage> {
             // color: Colors.amber,
             padding: const EdgeInsets.only(right: 5),
             child: IconButton(
-                onPressed: () {},
+                onPressed: () => showAccountMenuSheet(context),
                 icon: const Icon(
                   Icons.account_circle_rounded,
                   size: 40,
@@ -543,40 +544,43 @@ class _LibraryPageState extends State<LibraryPage> {
                   ),
                 ],
               ),
-              const Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.subscriptions_rounded,
-                            color: Colors.red,
-                            size: 40,
-                          ),
-                          SizedBox(
-                            width: 10,
-                          ),
-                          Text(
-                            "Album",
-                            style: TextStyle(
-                                color: Colors.white,
-                                // fontWeight: FontWeight.bold,
-                                fontSize: 20),
-                          ),
-                        ],
-                      ),
-                      Icon(Icons.arrow_forward_ios_rounded)
-                    ],
-                  ),
-                  Divider(
-                    color: Color.fromARGB(255, 103, 103, 103),
-                    thickness: .4,
-                    indent: 50,
-                    endIndent: 0,
-                  ),
-                ],
+              GestureDetector(
+                onTap: () => showFoldersSheet(context),
+                child: const Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.folder_copy_rounded,
+                              color: Colors.red,
+                              size: 40,
+                            ),
+                            SizedBox(
+                              width: 10,
+                            ),
+                            Text(
+                              "Folders",
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  // fontWeight: FontWeight.bold,
+                                  fontSize: 20),
+                            ),
+                          ],
+                        ),
+                        Icon(Icons.arrow_forward_ios_rounded)
+                      ],
+                    ),
+                    Divider(
+                      color: Color.fromARGB(255, 103, 103, 103),
+                      thickness: .4,
+                      indent: 50,
+                      endIndent: 0,
+                    ),
+                  ],
+                ),
               ),
               GestureDetector(
                 onTap: () {

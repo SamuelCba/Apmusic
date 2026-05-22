@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:musicplayer/widgets/music_library_sheets.dart';
 
 class RadioPage extends StatefulWidget {
   const RadioPage({super.key});
@@ -501,7 +502,7 @@ class _RadioPageState extends State<RadioPage> {
             // color: Colors.amber,
             padding: const EdgeInsets.only(right: 5),
             child: IconButton(
-                onPressed: () {},
+                onPressed: () => showAccountMenuSheet(context),
                 icon: const Icon(
                   Icons.account_circle_rounded,
                   size: 40,

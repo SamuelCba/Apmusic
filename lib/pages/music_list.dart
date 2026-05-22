@@ -1,5 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
+
+import '../services/music_library_controller.dart';
+import '../widgets/apple_music_player_widgets.dart';
+import '../widgets/music_library_sheets.dart';
 
 class MusicList extends StatefulWidget {
   const MusicList({super.key});
@@ -9,56 +15,15 @@ class MusicList extends StatefulWidget {
 }
 
 class _MusicListState extends State<MusicList> {
-  final OnAudioQuery _audioQuery = OnAudioQuery();
-  late Future<List<SongModel>> _songsFuture;
-  bool _permissionGranted = true;
+  final MusicLibraryController _controller = MusicLibraryController.instance;
 
   @override
   void initState() {
     super.initState();
-    _songsFuture = _loadSongs();
+    unawaited(_controller.ensureLoaded());
   }
 
-  Future<List<SongModel>> _loadSongs() async {
-    final granted = await _audioQuery.checkAndRequest();
-    if (!granted) {
-      if (mounted) {
-        setState(() {
-          _permissionGranted = false;
-        });
-      }
-      return [];
-    }
-
-    final songs = await _audioQuery.querySongs(
-      sortType: SongSortType.DATE_ADDED,
-      uriType: UriType.EXTERNAL,
-    );
-
-    final mp3Songs = songs.where((song) {
-      final extension = song.fileExtension.toLowerCase();
-      return extension == 'mp3' || song.data.toLowerCase().endsWith('.mp3');
-    }).toList()
-      ..sort((a, b) {
-        final aDate = a.dateAdded ?? 0;
-        final bDate = b.dateAdded ?? 0;
-        return bDate.compareTo(aDate);
-      });
-
-    if (mounted) {
-      setState(() {
-        _permissionGranted = true;
-      });
-    }
-
-    return mp3Songs;
-  }
-
-  Future<void> _refreshSongs() async {
-    setState(() {
-      _songsFuture = _loadSongs();
-    });
-  }
+  Future<void> _refreshSongs() => _controller.refresh();
 
   void _openPlayer(SongModel song) {
     Navigator.pushNamed(
@@ -78,26 +43,46 @@ class _MusicListState extends State<MusicList> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         title: const Text(
           'Songs',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 28),
         ),
         actions: [
           IconButton(
             onPressed: _refreshSongs,
             icon: const Icon(Icons.refresh_rounded),
           ),
+          IconButton(
+            onPressed: () => showFoldersSheet(context),
+            icon: const Icon(Icons.folder_copy_rounded),
+          ),
         ],
       ),
-      body: FutureBuilder<List<SongModel>>(
-        future: _songsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF473616),
+              Color(0xFF232326),
+              Color(0xFF121212),
+            ],
+            stops: [0, 0.34, 1],
+          ),
+        ),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            if (_controller.loading && !_controller.hasLoaded) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (!_permissionGranted) {
+          if (!_controller.permissionGranted) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
@@ -127,107 +112,95 @@ class _MusicListState extends State<MusicList> {
             );
           }
 
-          final songs = snapshot.data ?? [];
-          if (songs.isEmpty) {
+            final songs = _controller.visibleSongs;
+            final firstFolder = songs.isEmpty
+                ? 'No folder'
+                : _controller.folderNameFor(
+                    _controller.folderPathFor(songs.first.data),
+                  );
+            if (songs.isEmpty) {
+              return RefreshIndicator(
+                onRefresh: _refreshSongs,
+                child: ListView(
+                  children: [
+                    const SizedBox(height: 120),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        'No encontré archivos .mp3 en las carpetas activas.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () => showFoldersSheet(context),
+                        icon: const Icon(Icons.folder_copy_rounded),
+                        label: const Text('Manage folders'),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
             return RefreshIndicator(
               onRefresh: _refreshSongs,
               child: ListView(
-                children: const [
-                  SizedBox(height: 120),
-                  Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'No encontré archivos .mp3 en el almacenamiento.',
-                        textAlign: TextAlign.center,
-                      ),
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 26),
+                children: [
+                  BlurPanel(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        QueueModeBar(automixOn: true),
+                        const SizedBox(height: 12),
+                        const Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            'AutoMix ON',
+                            style: TextStyle(
+                              color: Color(0xFFFF3B24),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Continue Playing',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 23,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'From $firstFolder',
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ...songs.map(
+                          (song) => SongListTile(
+                            song: song,
+                            onTap: () => _openPlayer(song),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             );
-          }
-
-          return RefreshIndicator(
-            onRefresh: _refreshSongs,
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: songs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final song = songs[index];
-                return InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () => _openPlayer(song),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1B1B1D),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: QueryArtworkWidget(
-                            id: song.id,
-                            type: ArtworkType.AUDIO,
-                            artworkWidth: 64,
-                            artworkHeight: 64,
-                            artworkFit: BoxFit.cover,
-                            quality: 50,
-                            nullArtworkWidget: Container(
-                              width: 64,
-                              height: 64,
-                              color: const Color(0xFF2A2A2D),
-                              child: const Icon(Icons.music_note_rounded, color: Colors.white54),
-                            ),
-                            errorBuilder: (_, __, ___) => Container(
-                              width: 64,
-                              height: 64,
-                              color: const Color(0xFF2A2A2D),
-                              child: const Icon(Icons.music_note_rounded, color: Colors.white54),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                song.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                song.artist ?? 'Unknown artist',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                song.album ?? 'Unknown album',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.white54, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.play_arrow_rounded, color: Colors.red, size: 30),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
+          },
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:musicplayer/widgets/music_library_sheets.dart';
 
 class BrowsePage extends StatefulWidget {
   const BrowsePage({super.key});
@@ -490,7 +491,7 @@ class _BrowsePageState extends State<BrowsePage> {
             // color: Colors.amber,
             padding: const EdgeInsets.only(right: 5),
             child: IconButton(
-                onPressed: () {},
+                onPressed: () => showAccountMenuSheet(context),
                 icon: const Icon(
                   Icons.account_circle_rounded,
                   size: 40,
