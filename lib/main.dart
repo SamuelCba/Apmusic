@@ -10,7 +10,6 @@ import 'package:musicplayer/pages/artist_page.dart';
 import 'package:musicplayer/pages/browse_page.dart';
 import 'package:musicplayer/pages/home_page.dart';
 import 'package:musicplayer/pages/music_list.dart';
-import 'package:musicplayer/pages/music_player.dart';
 import 'package:musicplayer/pages/radio.dart';
 import 'package:musicplayer/pages/search_page.dart';
 import 'package:musicplayer/webView/webViewContainer.dart';
@@ -64,8 +63,7 @@ class MyApp extends StatelessWidget {
         '/album': (context) => const WebView(child: AlbumPage()),
         '/artist': (context) => const WebView(child: ArtistPage()),
         '/artistlist': (context) => const WebView(child: ArtistList()),
-        '/musiclist': (context) => const WebView(child: MusicList()),
-        '/player': (context) => const WebView(child: MusicPlayer())
+        '/musiclist': (context) => const WebView(child: MusicList())
       },
     );
   }

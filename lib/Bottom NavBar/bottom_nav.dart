@@ -872,13 +872,6 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
           ),
           const Spacer(),
         ],
-            ),
-            const SizedBox(width: 30),
-            const Icon(CupertinoIcons.forward_end_fill, color: Colors.white54, size: 38),
-          ],
-        ),
-        const Spacer(),
-        ],
         Row(
           children: [
             const Icon(Icons.volume_down_rounded, color: Colors.white54, size: 20),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
@@ -68,6 +69,8 @@ class PlaybackController extends ChangeNotifier {
   int? remoteIndex;
   List<SongModel> localQueue = [];
   List<Map<String, dynamic>> remoteQueue = [];
+  final OnAudioQuery _audioQuery = OnAudioQuery();
+  final Map<int, Uri?> _localArtworkUriCache = {};
 
   bool get hasTrack => source != null || artworkUrl != null;
   bool get canGoPrevious => audioPlayer.hasPrevious;
@@ -125,12 +128,46 @@ class PlaybackController extends ChangeNotifier {
     );
   }
 
-  MediaItem _localMediaItem(SongModel song) {
+  Future<Uri?> _localArtworkUri(SongModel song) async {
+    if (_localArtworkUriCache.containsKey(song.id)) {
+      return _localArtworkUriCache[song.id];
+    }
+
+    try {
+      final bytes = await _audioQuery.queryArtwork(
+        song.id,
+        ArtworkType.AUDIO,
+        format: ArtworkFormat.JPEG,
+        size: 900,
+        quality: 100,
+      );
+      if (bytes == null || bytes.isEmpty) {
+        _localArtworkUriCache[song.id] = null;
+        return null;
+      }
+
+      final directory = Directory('${Directory.systemTemp.path}/apmusic_artwork');
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+      final file = File('${directory.path}/${song.id}.jpg');
+      await file.writeAsBytes(bytes, flush: true);
+      final uri = file.uri;
+      _localArtworkUriCache[song.id] = uri;
+      return uri;
+    } catch (_) {
+      _localArtworkUriCache[song.id] = null;
+      return null;
+    }
+  }
+
+  Future<MediaItem> _localMediaItem(SongModel song) async {
     return MediaItem(
       id: song.data,
       album: song.album ?? 'Unknown album',
       title: song.title,
       artist: song.artist ?? 'Unknown artist',
+      artUri: await _localArtworkUri(song),
     );
   }
 
@@ -171,7 +208,8 @@ class PlaybackController extends ChangeNotifier {
   Future<void> playLocalQueue(List<SongModel> songs, int index) async {
     if (songs.isEmpty) return;
     final safeIndex = index.clamp(0, songs.length - 1).toInt();
-    localQueue = List<SongModel>.from(songs);
+    final queue = List<SongModel>.from(songs);
+    localQueue = queue;
     remoteQueue = [];
     final current = localQueue[safeIndex];
     setMetadata(
@@ -182,12 +220,15 @@ class PlaybackController extends ChangeNotifier {
       source: current.data,
       artworkId: current.id,
     );
+    final mediaItems = await Future.wait([
+      for (final song in queue) _localMediaItem(song),
+    ]);
     final playlist = ConcatenatingAudioSource(
       children: [
-        for (final song in localQueue)
+        for (var i = 0; i < queue.length; i++)
           AudioSource.uri(
-            Uri.file(song.data),
-            tag: _localMediaItem(song),
+            Uri.file(queue[i].data),
+            tag: mediaItems[i],
           ),
       ],
     );

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
 
 import '../services/music_library_controller.dart';
+import '../services/playback_controller.dart';
 import '../widgets/apple_music_player_widgets.dart';
 import '../widgets/music_library_sheets.dart';
 
@@ -26,18 +27,9 @@ class _MusicListState extends State<MusicList> {
   Future<void> _refreshSongs() => _controller.refresh();
 
   void _openPlayer(SongModel song) {
-    Navigator.pushNamed(
-      context,
-      '/player',
-      arguments: {
-        'source': song.data,
-        'title': song.title,
-        'artist': song.artist ?? 'Unknown artist',
-        'album': song.album ?? 'Unknown album',
-        'artworkId': song.id,
-        'isLocal': true,
-      },
-    );
+    final songs = _controller.visibleSongs;
+    final index = songs.indexWhere((item) => item.data == song.data);
+    unawaited(PlaybackController.instance.playLocalQueue(songs, index < 0 ? 0 : index));
   }
 
   @override
