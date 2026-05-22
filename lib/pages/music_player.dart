@@ -2,6 +2,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:on_audio_query/on_audio_query.dart';
 
 import 'package:palette_generator/palette_generator.dart';
 
@@ -447,11 +448,18 @@ class _MusicPlayerState extends State<MusicPlayer> {
 
   //variable for music audioPlayer
   late final AudioPlayer audioPlayer;
+  final OnAudioQuery _audioQuery = OnAudioQuery();
   bool isPlaying = false;
   Duration duration = Duration.zero;
   Duration position = Duration.zero;
   int currentIndex = 0;
   bool isLoading = false;
+  bool _isLocalTrack = false;
+  String? _localSource;
+  String? _localTitle;
+  String? _localArtist;
+  String? _localAlbum;
+  int? _localArtworkId;
 
   @override
   void initState() {
@@ -459,17 +467,31 @@ class _MusicPlayerState extends State<MusicPlayer> {
     // Initialize audio player
     audioPlayer = AudioPlayer();
     setupAudioPlayer();
-    _updatePaletteGenerator(currentIndex);
-    changeImage(currentIndex);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final routes = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-      if (routes != null && routes.containsKey('index')) {
+      if (routes != null && routes['source'] != null) {
+        setState(() {
+          _isLocalTrack = true;
+          _localSource = routes['source'] as String;
+          _localTitle = routes['title'] as String?;
+          _localArtist = routes['artist'] as String?;
+          _localAlbum = routes['album'] as String?;
+          _localArtworkId = routes['artworkId'] as int?;
+        });
+        _loadLocalSong();
+      } else if (routes != null && routes.containsKey('index')) {
         setState(() {
           currentIndex = routes['index'] as int;
+          _isLocalTrack = false;
         });
+        _updatePaletteGenerator(currentIndex);
+        changeImage(currentIndex);
         _loadSong(currentIndex);
       } else {
+        _isLocalTrack = false;
+        _updatePaletteGenerator(currentIndex);
+        changeImage(currentIndex);
         // Load the first song by default
         _loadSong(currentIndex);
       }
@@ -505,8 +527,8 @@ class _MusicPlayerState extends State<MusicPlayer> {
           position = Duration.zero;
           isPlaying = false;
         });
-        // Automatically play next song
-        if (currentIndex < song.length - 1) {
+        // Automatically play next song only for the built-in demo playlist.
+        if (!_isLocalTrack && currentIndex < song.length - 1) {
           currentIndex++;
           _loadSong(currentIndex);
         }
@@ -523,6 +545,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
   Future<void> _loadSong(int index) async {
     setState(() {
       isLoading = true;
+      _isLocalTrack = false;
       currentIndex = index;
     });
 
@@ -543,6 +566,36 @@ class _MusicPlayerState extends State<MusicPlayer> {
     }
   }
 
+  Future<void> _loadLocalSong() async {
+    final source = _localSource;
+    if (source == null) return;
+
+    setState(() {
+      isLoading = true;
+      colors = [
+        const Color(0xFF202020),
+        const Color(0xFF000000),
+      ];
+    });
+
+    try {
+      await audioPlayer.stop();
+      await audioPlayer.setFilePath(source);
+      await audioPlayer.play();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error playing local file: ${e.toString()}')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
   String formatTime(Duration duration) {
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
@@ -557,6 +610,9 @@ class _MusicPlayerState extends State<MusicPlayer> {
   ];
 
   Future<void> _updatePaletteGenerator(int index) async {
+    if (_isLocalTrack) {
+      return;
+    }
     try {
       final imageUrl = song[index]['image'];
       paletteGenerator = await PaletteGenerator.fromImageProvider(
@@ -578,10 +634,76 @@ class _MusicPlayerState extends State<MusicPlayer> {
   }
 
   void changeImage(int newIndex) async {
+    if (_isLocalTrack) return;
     setState(() {
       currentIndex = newIndex;
     });
     await _updatePaletteGenerator(currentIndex);
+  }
+
+  String get _currentTitle => _isLocalTrack ? (_localTitle ?? 'Local track') : song[currentIndex]['title'];
+
+  String get _currentArtist => _isLocalTrack ? (_localArtist ?? 'Unknown artist') : song[currentIndex]['artist'];
+
+  Widget _buildArtwork() {
+    if (_isLocalTrack) {
+      final artworkId = _localArtworkId;
+      if (artworkId != null) {
+        return ClipPath(
+          clipper: ShapeBorderClipper(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10.0),
+            ),
+          ),
+          child: QueryArtworkWidget(
+            id: artworkId,
+            type: ArtworkType.AUDIO,
+            artworkWidth: 350,
+            artworkHeight: 350,
+            artworkFit: BoxFit.cover,
+            controller: _audioQuery,
+            nullArtworkWidget: Container(
+              height: 350,
+              width: 350,
+              color: const Color(0xFF222222),
+              child: const Icon(Icons.music_note_rounded, size: 80, color: Colors.white54),
+            ),
+            errorBuilder: (_, __, ___) => Container(
+              height: 350,
+              width: 350,
+              color: const Color(0xFF222222),
+              child: const Icon(Icons.music_note_rounded, size: 80, color: Colors.white54),
+            ),
+          ),
+        );
+      }
+
+      return Container(
+        height: 350,
+        width: 350,
+        decoration: BoxDecoration(
+          color: const Color(0xFF222222),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Icon(Icons.music_note_rounded, size: 80, color: Colors.white54),
+      );
+    }
+
+    return ClipPath(
+      clipper: ShapeBorderClipper(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10.0),
+        ),
+      ),
+      child: CachedNetworkImage(
+        placeholder: (context, url) => const CircularProgressIndicator(),
+        errorWidget: (context, url, error) => const Icon(Icons.error),
+        imageUrl: song[currentIndex]['image'],
+        height: 350,
+        width: 350,
+        fit: BoxFit.cover,
+      ),
+    );
   }
 
   @override
@@ -601,7 +723,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
           ),
         ),
       ),
-      body: Center(
+      body: SizedBox.expand(
         child: Container(
             decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -636,14 +758,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
                         borderRadius: BorderRadius.circular(10.0),
                       ),
                     ),
-                    child: CachedNetworkImage(
-                      placeholder: (context, url) => const CircularProgressIndicator(),
-                      errorWidget: (context, url, error) => const Icon(Icons.error),
-                      imageUrl: song[currentIndex ?? 0]['image'],
-                      height: 350,
-                      width: 350,
-                      fit: BoxFit.cover,
-                    ),
+                    child: _buildArtwork(),
                   ),
                 ),
                 const SizedBox(
@@ -662,13 +777,13 @@ class _MusicPlayerState extends State<MusicPlayer> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              song[currentIndex ?? 0]['title'],
+                              _currentTitle,
                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, overflow: TextOverflow.ellipsis),
                             ),
                             const SizedBox(
                               height: 3,
                             ),
-                            Text(song[currentIndex ?? 0]['artist']),
+                            Text(_currentArtist),
                           ],
                         ),
                       ),
@@ -767,7 +882,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
                         size: 70,
                         color: Color.fromARGB(255, 255, 255, 255),
                       ),
-                      onPressed: currentIndex > 0
+                      onPressed: !_isLocalTrack && currentIndex > 0
                           ? () {
                               setState(() {
                                 currentIndex--;
@@ -796,7 +911,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
                         size: 70,
                         color: Color.fromARGB(255, 255, 255, 255),
                       ),
-                      onPressed: currentIndex < song.length - 1
+                      onPressed: !_isLocalTrack && currentIndex < song.length - 1
                           ? () {
                               setState(() {
                                 currentIndex++;
