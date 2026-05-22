@@ -177,50 +177,98 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
                     ),
             ),
           ),
-          AnimatedBuilder(
-            animation: _playbackController,
-            builder: (context, _) {
-              return ValueListenableBuilder<double>(
-                valueListenable: _playerHeight,
-                builder: (context, height, _) {
-                  final progress = _playerProgress(height, maxPlayerHeight);
-                  return Stack(
-                    children: [
-                      if (_playbackController.hasTrack)
-                        _PersistentPlayerSheet(
-                          controller: _playbackController,
-                          height: height,
-                          progress: progress,
-                          safeBottom: safeBottom,
-                          isMiniMode: _isMiniMode && !_showSearchPage,
-                          onTapCollapsed: _expandPlayer,
-                          onCollapse: _collapsePlayer,
-                          onVerticalDragUpdate: _handlePlayerDragUpdate,
-                          onVerticalDragEnd: _handlePlayerDragEnd,
-                        ),
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: safeBottom,
-                        child: Transform.translate(
-                          offset: Offset(0, progress * (104 + safeBottom)),
-                          child: _LiquidNavBar(
-                            selectedIndex: _selected_index,
-                            isMiniMode: _isMiniMode,
-                            isSearching: _showSearchPage,
-                            onSelected: _navgateBottomBar,
-                            onSearch: _openSearch,
-                            onSearchClosed: _closeSearch,
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
+          ValueListenableBuilder<double>(
+            valueListenable: _playerHeight,
+            builder: (context, height, _) {
+              final progress = _playerProgress(height, maxPlayerHeight);
+              if (progress <= 0.001 || !_playbackController.hasTrack) {
+                return const SizedBox.shrink();
+              }
+              return _PersistentPlayerSheet(
+                controller: _playbackController,
+                height: height,
+                progress: progress,
+                safeBottom: safeBottom,
+                isMiniMode: _isMiniMode && !_showSearchPage,
+                onTapCollapsed: _expandPlayer,
+                onCollapse: _collapsePlayer,
+                onVerticalDragUpdate: _handlePlayerDragUpdate,
+                onVerticalDragEnd: _handlePlayerDragEnd,
               );
             },
           ),
         ],
+      ),
+      bottomNavigationBar: AnimatedBuilder(
+        animation: _playbackController,
+        builder: (context, _) {
+          final hasTrack = _playbackController.hasTrack;
+          final hideMiniForSearchKeyboard = _showSearchPage && MediaQuery.viewInsetsOf(context).bottom > 0;
+          const expandedNavBarH = 72.0;
+          const collapsedNavBarH = 50.0;
+          const pillGap = 14.0;
+          const collapsedPillW = 50.0;
+          final activeNavBarH = _showSearchPage ? collapsedNavBarH : expandedNavBarH;
+          final aboveBarBottom = activeNavBarH + pillGap + safeBottom;
+          final miniBarBottom = 16.0 + safeBottom;
+          final miniPlayInset = 20.0 + collapsedPillW + 6.0;
+          final compactPlayer = _isMiniMode && !_showSearchPage;
+
+          return ValueListenableBuilder<double>(
+            valueListenable: _playerHeight,
+            builder: (context, height, _) {
+              final progress = _playerProgress(height, maxPlayerHeight);
+              final miniOpacity = math.max(0.0, 1.0 - 4 * progress);
+              return SizedBox(
+                height: (hasTrack ? 152 : 88) + safeBottom,
+                child: Stack(
+                  alignment: Alignment.bottomCenter,
+                  children: [
+                    if (hasTrack)
+                      AnimatedPositioned(
+                        duration: const Duration(milliseconds: 420),
+                        curve: Curves.easeInOutCubic,
+                        left: compactPlayer ? miniPlayInset : 20,
+                        right: compactPlayer ? miniPlayInset : 20,
+                        bottom: compactPlayer ? miniBarBottom : aboveBarBottom,
+                        height: 50,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 120),
+                          opacity: hideMiniForSearchKeyboard ? 0 : miniOpacity,
+                          child: IgnorePointer(
+                            ignoring: hideMiniForSearchKeyboard || miniOpacity == 0,
+                            child: _LiquidMiniPlayer(
+                              controller: _playbackController,
+                              onOpen: _expandPlayer,
+                              compact: compactPlayer,
+                              onVerticalDragUpdate: _handlePlayerDragUpdate,
+                              onVerticalDragEnd: _handlePlayerDragEnd,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: safeBottom,
+                      child: Transform.translate(
+                        offset: Offset(0, progress * (104 + safeBottom)),
+                        child: _LiquidNavBar(
+                          selectedIndex: _selected_index,
+                          isMiniMode: _isMiniMode,
+                          isSearching: _showSearchPage,
+                          onSelected: _navgateBottomBar,
+                          onSearch: _openSearch,
+                          onSearchClosed: _closeSearch,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -341,6 +389,139 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
   }
 }
 
+class _LiquidMiniPlayer extends StatelessWidget {
+  final PlaybackController controller;
+  final VoidCallback onOpen;
+  final bool compact;
+  final GestureDragUpdateCallback onVerticalDragUpdate;
+  final GestureDragEndCallback onVerticalDragEnd;
+
+  const _LiquidMiniPlayer({
+    required this.controller,
+    required this.onOpen,
+    required this.onVerticalDragUpdate,
+    required this.onVerticalDragEnd,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragUpdate: onVerticalDragUpdate,
+      onVerticalDragEnd: onVerticalDragEnd,
+      child: GlassButton(
+        onTap: onOpen,
+        quality: GlassQuality.premium,
+        useOwnLayer: true,
+        shape: const LiquidRoundedSuperellipse(borderRadius: 28),
+        settings: const LiquidGlassSettings(
+          glassColor: Color(0xCC1C1C1E),
+          thickness: 30,
+          blur: 3,
+          lightIntensity: 0.35,
+          chromaticAberration: .01,
+        ),
+        icon: Padding(
+          padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(7),
+                child: SizedBox(
+                  width: compact ? 34 : 38,
+                  height: compact ? 34 : 38,
+                  child: _MiniArtwork(controller: controller),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      controller.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: compact ? 13 : 14,
+                      ),
+                    ),
+                    if (!compact)
+                      Text(
+                        controller.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.white60, fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => unawaited(controller.playPause()),
+                icon: Icon(
+                  controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
+                  color: Colors.white,
+                  size: compact ? 21 : 24,
+                ),
+              ),
+              if (!compact) const Icon(CupertinoIcons.forward_end_fill, color: Colors.white60, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniArtwork extends StatelessWidget {
+  final PlaybackController controller;
+
+  const _MiniArtwork({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    if (controller.isLocalTrack && controller.artworkId != null) {
+      return QueryArtworkWidget(
+        id: controller.artworkId!,
+        type: ArtworkType.AUDIO,
+        artworkFit: BoxFit.cover,
+        artworkWidth: 38,
+        artworkHeight: 38,
+        quality: 100,
+        artworkBorder: BorderRadius.zero,
+        nullArtworkWidget: const _SmallArtworkFallback(),
+        errorBuilder: (_, __, ___) => const _SmallArtworkFallback(),
+      );
+    }
+
+    if (controller.artworkUrl != null) {
+      return CachedNetworkImage(
+        imageUrl: controller.artworkUrl!,
+        fit: BoxFit.cover,
+        errorWidget: (_, __, ___) => const _SmallArtworkFallback(),
+      );
+    }
+
+    return const _SmallArtworkFallback();
+  }
+}
+
+class _SmallArtworkFallback extends StatelessWidget {
+  const _SmallArtworkFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF242426),
+      child: const Icon(Icons.music_note_rounded, color: Colors.white54, size: 22),
+    );
+  }
+}
+
 class _PersistentPlayerSheet extends StatelessWidget {
   final PlaybackController controller;
   final double height;
@@ -407,17 +588,7 @@ class _PersistentPlayerSheet extends StatelessWidget {
             filter: ImageFilter.blur(sigmaX: 18 * (1 - alpha), sigmaY: 18 * (1 - alpha)),
             child: Container(
               decoration: BoxDecoration(
-                color: Color.lerp(const Color(0xCC1C1C1E), Colors.transparent, alpha),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color.lerp(const Color(0xFF1C1C1E), const Color(0xFF513C18), alpha)!,
-                    Color.lerp(const Color(0xFF171719), const Color(0xFF28282A), alpha)!,
-                    const Color(0xFF121212),
-                  ],
-                  stops: const [0, 0.46, 1],
-                ),
+                color: const Color(0xFF121212),
                 border: Border.all(
                   color: Colors.white.withOpacity(lerpDouble(0.12, 0.0, alpha)!),
                 ),
@@ -425,6 +596,35 @@ class _PersistentPlayerSheet extends StatelessWidget {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
+                  Positioned.fill(
+                    child: Opacity(
+                      opacity: alpha * 0.55,
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 34, sigmaY: 34),
+                        child: _CoverArtwork(
+                          controller: controller,
+                          width: width,
+                          height: height,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color.lerp(const Color(0xCC1C1C1E), const Color(0xDD5A421B), alpha)!,
+                            Color.lerp(const Color(0xEE171719), const Color(0xEE242426), alpha)!,
+                            const Color(0xFF121212),
+                          ],
+                          stops: const [0, 0.48, 1],
+                        ),
+                      ),
+                    ),
+                  ),
                   Positioned(
                     left: artworkLeft,
                     top: artworkTop,
@@ -681,6 +881,68 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _CoverArtwork extends StatelessWidget {
+  final PlaybackController controller;
+  final double width;
+  final double height;
+
+  const _CoverArtwork({
+    required this.controller,
+    required this.width,
+    required this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (controller.isLocalTrack && controller.artworkId != null) {
+      return QueryArtworkWidget(
+        id: controller.artworkId!,
+        type: ArtworkType.AUDIO,
+        artworkFit: BoxFit.cover,
+        artworkWidth: width,
+        artworkHeight: height,
+        quality: 100,
+        artworkBorder: BorderRadius.zero,
+        nullArtworkWidget: const _CoverArtworkFallback(),
+        errorBuilder: (_, __, ___) => const _CoverArtworkFallback(),
+      );
+    }
+
+    if (controller.artworkUrl != null) {
+      return CachedNetworkImage(
+        imageUrl: controller.artworkUrl!,
+        fit: BoxFit.cover,
+        width: width,
+        height: height,
+        errorWidget: (_, __, ___) => const _CoverArtworkFallback(),
+      );
+    }
+
+    return const _CoverArtworkFallback();
+  }
+}
+
+class _CoverArtworkFallback extends StatelessWidget {
+  const _CoverArtworkFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF5A421B),
+            Color(0xFF242426),
+            Color(0xFF121212),
+          ],
+        ),
+      ),
     );
   }
 }
