@@ -23,7 +23,7 @@ class MiniPlayerHeader extends StatelessWidget {
       children: [
         if (artworkSize > 0) ...[
           ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               width: artworkSize,
               height: artworkSize,
@@ -274,9 +274,8 @@ class BottomToolsBar extends StatelessWidget {
           width: 64,
           height: 64,
           decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: queueActive ? Colors.white.withOpacity(0.28) : Colors.transparent,
-            border: queueActive ? Border.all(color: const Color(0xFFFF3B24), width: 3) : null,
+            borderRadius: BorderRadius.circular(18),
+            color: queueActive ? Colors.white.withOpacity(0.14) : Colors.transparent,
           ),
           child: IconButton(
             onPressed: onQueue,
@@ -431,11 +430,10 @@ class _ModePill extends StatelessWidget {
     return Container(
       height: 46,
       decoration: BoxDecoration(
-        color: active ? Colors.white.withOpacity(0.26) : Colors.white.withOpacity(0.12),
+        color: active ? Colors.white.withOpacity(0.18) : Colors.white.withOpacity(0.12),
         borderRadius: BorderRadius.circular(24),
-        border: active ? Border.all(color: const Color(0xFFFF3B24), width: 3) : null,
       ),
-      child: Icon(icon, color: active ? Colors.black.withOpacity(0.72) : Colors.white, size: 26),
+      child: Icon(icon, color: Colors.white, size: 26),
     );
   }
 }

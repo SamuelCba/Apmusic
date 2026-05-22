@@ -682,7 +682,7 @@ class _LibraryPageState extends State<LibraryPage> {
                                     children: [
                                       const SizedBox(height: 10),
                                       ClipRRect(
-                                        borderRadius: BorderRadius.circular(14),
+                                        borderRadius: BorderRadius.circular(8),
                                         child: QueryArtworkWidget(
                                           id: localSong.id,
                                           type: ArtworkType.AUDIO,

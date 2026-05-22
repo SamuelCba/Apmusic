@@ -480,6 +480,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
   final ScrollController _lyricsScrollController = ScrollController();
   final Map<int, GlobalKey> _lyricKeys = {};
   final LyricsService _lyricsService = const LyricsService();
+  final Map<String, Widget> _artworkCache = {};
   StreamSubscription<PlayerState>? _playerStateSubscription;
   StreamSubscription<Duration?>? _durationSubscription;
   StreamSubscription<Duration>? _positionSubscription;
@@ -609,6 +610,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
       _activeLyricIndex = -1;
       currentIndex = index;
     });
+    _artworkCache.clear();
     _playbackController.setMetadata(
       title: song[index]['title'].toString(),
       artist: song[index]['artist'].toString(),
@@ -657,6 +659,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
       _lyricsError = null;
       _activeLyricIndex = -1;
     });
+    _artworkCache.clear();
     _playbackController.setMetadata(
       title: _localTitle ?? 'Local track',
       artist: _localArtist ?? 'Unknown artist',
@@ -915,10 +918,17 @@ class _MusicPlayerState extends State<MusicPlayer> {
           : song[currentIndex]['album'].toString();
 
   Widget _buildArtwork([double size = 360]) {
+    final cacheKey = _isLocalTrack
+        ? 'local-${_localArtworkId ?? 'none'}-${size.toStringAsFixed(1)}'
+        : 'remote-$currentIndex-${size.toStringAsFixed(1)}';
+    final cached = _artworkCache[cacheKey];
+    if (cached != null) return cached;
+
+    late final Widget artwork;
     if (_isLocalTrack) {
       final artworkId = _localArtworkId;
       if (artworkId != null) {
-        return QueryArtworkWidget(
+        artwork = QueryArtworkWidget(
           id: artworkId,
           type: ArtworkType.AUDIO,
           artworkWidth: size,
@@ -929,12 +939,16 @@ class _MusicPlayerState extends State<MusicPlayer> {
           nullArtworkWidget: _artworkPlaceholder(size),
           errorBuilder: (_, __, ___) => _artworkPlaceholder(size),
         );
+        _artworkCache[cacheKey] = artwork;
+        return artwork;
       }
 
-      return _artworkPlaceholder(size);
+      artwork = _artworkPlaceholder(size);
+      _artworkCache[cacheKey] = artwork;
+      return artwork;
     }
 
-    return CachedNetworkImage(
+    artwork = CachedNetworkImage(
       placeholder: (context, url) => const Center(
         child: CircularProgressIndicator(),
       ),
@@ -944,6 +958,8 @@ class _MusicPlayerState extends State<MusicPlayer> {
       width: size,
       fit: BoxFit.cover,
     );
+    _artworkCache[cacheKey] = artwork;
+    return artwork;
   }
 
   Widget _artworkPlaceholder([double size = 360]) {
@@ -1308,7 +1324,7 @@ class _MusicPlayerState extends State<MusicPlayer> {
                   ),
                   const SizedBox(height: 34),
                   MiniPlayerHeader(
-                    artwork: _buildArtwork(72),
+                    artwork: const SizedBox.shrink(),
                     title: _currentTitle,
                     artist: _currentArtist,
                     artworkSize: 0,
@@ -1388,18 +1404,6 @@ class _MusicPlayerState extends State<MusicPlayer> {
                     ),
                     const SizedBox(height: 28),
                     QueueModeBar(automixOn: true),
-                    const SizedBox(height: 12),
-                    const Align(
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        'AutoMix ON',
-                        style: TextStyle(
-                          color: Color(0xFFFF3B24),
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
                     const SizedBox(height: 16),
                     Text(
                       'Continue Playing',

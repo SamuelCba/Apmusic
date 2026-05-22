@@ -4,14 +4,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
-import 'package:musicplayer/pages/artist_list.dart';
 import 'package:musicplayer/pages/browse_page.dart';
 import 'package:musicplayer/pages/home_page.dart';
 import 'package:musicplayer/pages/library_page.dart';
-import 'package:musicplayer/pages/music_list.dart';
+import 'package:musicplayer/pages/music_player.dart';
 import 'package:musicplayer/pages/radio.dart';
 import 'package:musicplayer/pages/search_page.dart';
 import 'package:musicplayer/services/playback_controller.dart';
+import 'package:musicplayer/webView/webViewContainer.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
 
 class FirstPage extends StatefulWidget {
@@ -23,12 +23,56 @@ class FirstPage extends StatefulWidget {
 
 class _FirstPageState extends State<FirstPage> {
   int _selected_index = 0;
+  bool _isMiniMode = false;
+  bool _showSearchPage = false;
   final PlaybackController _playbackController = PlaybackController.instance;
 
   void _navgateBottomBar(int index) {
     setState(() {
       _selected_index = index;
+      _showSearchPage = false;
+      _isMiniMode = false;
     });
+  }
+
+  void _openSearch() {
+    setState(() {
+      _showSearchPage = true;
+      _isMiniMode = false;
+    });
+  }
+
+  void _openPlayer() {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 460),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (_, __, ___) => const WebView(child: MusicPlayer()),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+          return FadeTransition(
+            opacity: curved,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.88, end: 1).animate(curved),
+              alignment: Alignment.bottomCenter,
+              child: SlideTransition(
+                position: Tween<Offset>(begin: const Offset(0, 0.18), end: Offset.zero).animate(curved),
+                child: child,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  bool _handleScroll(ScrollNotification notification) {
+    if (_showSearchPage || notification.metrics.axis != Axis.vertical) return false;
+    final mini = notification.metrics.pixels > 50;
+    if (mini != _isMiniMode) {
+      setState(() => _isMiniMode = mini);
+    }
+    return false;
   }
 
   final List _pages = [
@@ -36,33 +80,57 @@ class _FirstPageState extends State<FirstPage> {
     const BrowsePage(),
     const RadioPage(),
     const LibraryPage(),
-    const SearchPage(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-      body: _pages[_selected_index],
+      resizeToAvoidBottomInset: false,
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _handleScroll,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeOutCubic,
+          child: _showSearchPage
+              ? const SearchPage(key: ValueKey('search'), autoFocus: true)
+              : KeyedSubtree(
+                  key: ValueKey('tab-$_selected_index'),
+                  child: _pages[_selected_index],
+                ),
+        ),
+      ),
       bottomNavigationBar: AnimatedBuilder(
         animation: _playbackController,
         builder: (context, _) {
           final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
           final hasTrack = _playbackController.hasTrack;
+          final hideMiniForSearchKeyboard = _showSearchPage && MediaQuery.viewInsetsOf(context).bottom > 0;
           return SizedBox(
             height: (hasTrack ? 142 : 84) + safeBottom,
             child: Stack(
               alignment: Alignment.bottomCenter,
               children: [
                 if (hasTrack)
-                  Positioned(
-                    left: 18,
-                    right: 18,
-                    bottom: 78 + safeBottom,
-                    height: 54,
-                    child: _LiquidMiniPlayer(
-                      controller: _playbackController,
-                      onOpen: () => Navigator.pushNamed(context, '/player'),
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 420),
+                    curve: Curves.easeInOutCubic,
+                    left: _isMiniMode ? 78 : 18,
+                    right: _isMiniMode ? 78 : 18,
+                    bottom: _isMiniMode ? 16 + safeBottom : 78 + safeBottom,
+                    height: _isMiniMode ? 50 : 54,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 180),
+                      opacity: hideMiniForSearchKeyboard ? 0 : 1,
+                      child: IgnorePointer(
+                        ignoring: hideMiniForSearchKeyboard,
+                        child: _LiquidMiniPlayer(
+                          controller: _playbackController,
+                          onOpen: _openPlayer,
+                          compact: _isMiniMode,
+                        ),
+                      ),
                     ),
                   ),
                 Positioned(
@@ -72,7 +140,9 @@ class _FirstPageState extends State<FirstPage> {
                   height: 58,
                   child: _LiquidNavBar(
                     selectedIndex: _selected_index,
+                    isMiniMode: _isMiniMode,
                     onSelected: _navgateBottomBar,
+                    onSearch: _openSearch,
                   ),
                 ),
               ],
@@ -86,11 +156,15 @@ class _FirstPageState extends State<FirstPage> {
 
 class _LiquidNavBar extends StatefulWidget {
   final int selectedIndex;
+  final bool isMiniMode;
   final ValueChanged<int> onSelected;
+  final VoidCallback onSearch;
 
   const _LiquidNavBar({
     required this.selectedIndex,
+    required this.isMiniMode,
     required this.onSelected,
+    required this.onSearch,
   });
 
   @override
@@ -120,10 +194,6 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
       icon: Icon(CupertinoIcons.music_albums),
       activeIcon: Icon(CupertinoIcons.music_albums_fill),
     ),
-    GlassBottomBarTab(
-      label: 'Search',
-      icon: Icon(CupertinoIcons.search),
-    ),
   ];
 
   @override
@@ -135,7 +205,7 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
   @override
   Widget build(BuildContext context) {
     return GlassSearchableBottomBar(
-      isSearchActive: false,
+      isSearchActive: widget.isMiniMode,
       selectedIndex: widget.selectedIndex,
       onTabSelected: widget.onSelected,
       barHeight: 58,
@@ -166,17 +236,26 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
         hintText: 'Apple Music',
         onSearchToggle: (active) {
           if (active) {
-            widget.onSelected(4);
+            widget.onSearch();
             _searchFocusNode.unfocus();
           }
         },
         onSearchFocusChanged: (focused) {
           if (!focused) return;
-          widget.onSelected(4);
+          widget.onSearch();
           _searchFocusNode.unfocus();
         },
         searchIconColor: Colors.white.withOpacity(0.86),
         textInputAction: TextInputAction.search,
+        collapsedLogoBuilder: (context) {
+          final tab = _tabs[widget.selectedIndex];
+          return Center(
+            child: IconTheme(
+              data: const IconThemeData(color: Color(0xFFFF2D55), size: 28),
+              child: tab.activeIcon ?? tab.icon,
+            ),
+          );
+        },
       ),
       tabs: _tabs,
     );
@@ -186,10 +265,12 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
 class _LiquidMiniPlayer extends StatelessWidget {
   final PlaybackController controller;
   final VoidCallback onOpen;
+  final bool compact;
 
   const _LiquidMiniPlayer({
     required this.controller,
     required this.onOpen,
+    this.compact = false,
   });
 
   @override
@@ -207,51 +288,54 @@ class _LiquidMiniPlayer extends StatelessWidget {
         chromaticAberration: .01,
       ),
       icon: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(7),
               child: SizedBox(
-                width: 38,
-                height: 38,
+                width: compact ? 34 : 38,
+                height: compact ? 34 : 38,
                 child: _MiniArtwork(controller: controller),
               ),
             ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    controller.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
+            if (!compact) ...[
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      controller.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
                     ),
-                  ),
-                  Text(
-                    controller.artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white60, fontSize: 12),
-                  ),
-                ],
+                    Text(
+                      controller.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ] else
+              const Spacer(),
             IconButton(
               onPressed: () => controller.playPause(),
               icon: Icon(
                 controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
                 color: Colors.white,
-                size: 24,
+                size: compact ? 21 : 24,
               ),
             ),
-            const Icon(CupertinoIcons.forward_end_fill, color: Colors.white60, size: 20),
+            if (!compact) const Icon(CupertinoIcons.forward_end_fill, color: Colors.white60, size: 20),
           ],
         ),
       ),
