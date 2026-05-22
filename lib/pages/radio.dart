@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:musicplayer/services/playback_controller.dart';
 import 'package:musicplayer/widgets/music_library_sheets.dart';
 
 class RadioPage extends StatefulWidget {
@@ -976,9 +977,7 @@ class _RadioPageState extends State<RadioPage> {
               itemBuilder: (context, index) {
                 return InkWell(
                   onTap: () {
-                    Navigator.pushNamed(context, '/player', arguments: {
-                      'index': index
-                    });
+                    PlaybackController.instance.playRemoteQueue(song, index);
                   },
                   child: Container(
                     // color: Colors.amber,

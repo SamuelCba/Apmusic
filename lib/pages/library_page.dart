@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
 import 'package:musicplayer/services/music_library_controller.dart';
+import 'package:musicplayer/services/playback_controller.dart';
 import 'package:musicplayer/widgets/music_library_sheets.dart';
 // import 'package:icons_flutter/icons_flutter.dart';
 
@@ -666,14 +667,7 @@ class _LibraryPageState extends State<LibraryPage> {
                               final localSong = songs[index];
                               return GestureDetector(
                                 onTap: () {
-                                  Navigator.pushNamed(context, '/player', arguments: {
-                                    'source': localSong.data,
-                                    'title': localSong.title,
-                                    'artist': localSong.artist ?? 'Unknown artist',
-                                    'album': localSong.album ?? 'Unknown album',
-                                    'artworkId': localSong.id,
-                                    'isLocal': true,
-                                  });
+                                  PlaybackController.instance.playLocalQueue(songs, index);
                                 },
                                 child: Container(
                                   margin: const EdgeInsets.only(right: 10, left: 6),

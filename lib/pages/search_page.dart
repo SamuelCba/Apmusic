@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:musicplayer/services/music_library_controller.dart';
+import 'package:musicplayer/services/playback_controller.dart';
 import 'package:musicplayer/widgets/music_library_sheets.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
 
@@ -70,14 +71,9 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   void _openSong(SongModel song) {
-    Navigator.pushNamed(context, '/player', arguments: {
-      'source': song.data,
-      'title': song.title,
-      'artist': song.artist ?? 'Unknown artist',
-      'album': song.album ?? 'Unknown album',
-      'artworkId': song.id,
-      'isLocal': true,
-    });
+    final queue = _results.isEmpty ? _libraryController.visibleSongs : _results;
+    final index = queue.indexWhere((item) => item.data == song.data);
+    PlaybackController.instance.playLocalQueue(queue, index < 0 ? 0 : index);
   }
 
   @override

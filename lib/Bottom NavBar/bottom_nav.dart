@@ -30,6 +30,7 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
   int _selected_index = 0;
   bool _isMiniMode = false;
   bool _showSearchPage = false;
+  bool _playerQueueMode = false;
   final PlaybackController _playbackController = PlaybackController.instance;
   late final ValueNotifier<double> _playerHeight;
   late final AnimationController _snapController;
@@ -82,6 +83,7 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
   }
 
   void _collapsePlayer() {
+    setState(() => _playerQueueMode = false);
     _animatePlayerTo(_collapsedPlayerHeight);
   }
 
@@ -190,8 +192,10 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
                 progress: progress,
                 safeBottom: safeBottom,
                 isMiniMode: _isMiniMode && !_showSearchPage,
+                queueMode: _playerQueueMode,
                 onTapCollapsed: _expandPlayer,
                 onCollapse: _collapsePlayer,
+                onQueueModeChanged: (value) => setState(() => _playerQueueMode = value),
                 onVerticalDragUpdate: _handlePlayerDragUpdate,
                 onVerticalDragEnd: _handlePlayerDragEnd,
               );
@@ -468,7 +472,15 @@ class _LiquidMiniPlayer extends StatelessWidget {
                   size: compact ? 21 : 24,
                 ),
               ),
-              if (!compact) const Icon(CupertinoIcons.forward_end_fill, color: Colors.white60, size: 20),
+              if (!compact)
+                IconButton(
+                  onPressed: controller.canGoNext ? () => unawaited(controller.skipNext()) : null,
+                  icon: Icon(
+                    CupertinoIcons.forward_end_fill,
+                    color: controller.canGoNext ? Colors.white60 : Colors.white24,
+                    size: 20,
+                  ),
+                ),
             ],
           ),
         ),
@@ -528,8 +540,10 @@ class _PersistentPlayerSheet extends StatelessWidget {
   final double progress;
   final double safeBottom;
   final bool isMiniMode;
+  final bool queueMode;
   final VoidCallback onTapCollapsed;
   final VoidCallback onCollapse;
+  final ValueChanged<bool> onQueueModeChanged;
   final GestureDragUpdateCallback onVerticalDragUpdate;
   final GestureDragEndCallback onVerticalDragEnd;
 
@@ -539,8 +553,10 @@ class _PersistentPlayerSheet extends StatelessWidget {
     required this.progress,
     required this.safeBottom,
     required this.isMiniMode,
+    required this.queueMode,
     required this.onTapCollapsed,
     required this.onCollapse,
+    required this.onQueueModeChanged,
     required this.onVerticalDragUpdate,
     required this.onVerticalDragEnd,
   });
@@ -564,13 +580,19 @@ class _PersistentPlayerSheet extends StatelessWidget {
     final collapsedBottom = isMiniMode ? 16.0 + safeBottom : navOffset;
     final bottom = lerpDouble(collapsedBottom, 0, alpha)!;
     final horizontalMargin = lerpDouble(isMiniMode ? 76.0 : 16.0, 0, alpha)!;
-    final artworkSize = 48.0 + alpha * (width * 0.85 - 48.0);
-    final artworkLeft = 16.0 + alpha * ((width - artworkSize) / 2.0 - 16.0);
-    final artworkTop = lerpDouble(12.0, _expandedTopArtwork, alpha)!;
+    final expandedArtworkSize = queueMode ? 74.0 : width * 0.85;
+    final expandedArtworkLeft = queueMode ? 22.0 : (width - expandedArtworkSize) / 2.0;
+    final expandedArtworkTop = queueMode ? 78.0 : _expandedTopArtwork;
+    final artworkSize = 48.0 + alpha * (expandedArtworkSize - 48.0);
+    final artworkLeft = lerpDouble(16.0, expandedArtworkLeft, alpha)!;
+    final artworkTop = lerpDouble(12.0, expandedArtworkTop, alpha)!;
     final artworkRadius = 8.0 + alpha * 16.0;
-    final titleLeft = lerpDouble(78.0, 22.0, alpha)!;
-    final titleRight = lerpDouble(74.0, 132.0, alpha)!;
-    final titleTop = lerpDouble(10.0, artworkTop + artworkSize + 30.0, alpha)!;
+    final expandedTitleLeft = queueMode ? 112.0 : 22.0;
+    final expandedTitleRight = queueMode ? 70.0 : 132.0;
+    final expandedTitleTop = queueMode ? 86.0 : artworkTop + artworkSize + 30.0;
+    final titleLeft = lerpDouble(78.0, expandedTitleLeft, alpha)!;
+    final titleRight = lerpDouble(74.0, expandedTitleRight, alpha)!;
+    final titleTop = lerpDouble(10.0, expandedTitleTop, alpha)!;
     final maxiOpacity = _maxiOpacity(alpha);
 
     return Positioned(
@@ -660,6 +682,8 @@ class _PersistentPlayerSheet extends StatelessWidget {
                         child: _ExpandedPlayerControls(
                           controller: controller,
                           onCollapse: onCollapse,
+                          queueMode: queueMode,
+                          onQueueModeChanged: onQueueModeChanged,
                           formatDuration: _format,
                         ),
                       ),
@@ -678,11 +702,15 @@ class _PersistentPlayerSheet extends StatelessWidget {
 class _ExpandedPlayerControls extends StatefulWidget {
   final PlaybackController controller;
   final VoidCallback onCollapse;
+  final bool queueMode;
+  final ValueChanged<bool> onQueueModeChanged;
   final String Function(Duration duration) formatDuration;
 
   const _ExpandedPlayerControls({
     required this.controller,
     required this.onCollapse,
+    required this.queueMode,
+    required this.onQueueModeChanged,
     required this.formatDuration,
   });
 
@@ -761,69 +789,96 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
           ],
         ),
         const SizedBox(height: 34),
-        StreamBuilder<Duration>(
-          stream: controller.audioPlayer.positionStream,
-          initialData: controller.position,
-          builder: (context, snapshot) {
-            final position = snapshot.data ?? Duration.zero;
-            final duration = controller.duration.inMilliseconds > 0 ? controller.duration : const Duration(seconds: 1);
-            final totalMs = duration.inMilliseconds;
-            final value = position.inMilliseconds.clamp(0, totalMs).toDouble();
-            return Column(
-              children: [
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 4,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
-                    overlayShape: SliderComponentShape.noOverlay,
-                    activeTrackColor: Colors.white.withOpacity(0.78),
-                    inactiveTrackColor: Colors.white.withOpacity(0.24),
-                  ),
-                  child: Slider(
-                    min: 0,
-                    max: totalMs.toDouble(),
-                    value: value,
-                    onChanged: (ms) {
-                      unawaited(controller.seek(Duration(milliseconds: ms.toInt())));
-                    },
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      widget.formatDuration(position),
-                      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
+        if (widget.queueMode) ...[
+          Expanded(
+            child: _InlineQueuePanel(controller: controller),
+          ),
+        ] else ...[
+          StreamBuilder<Duration>(
+            stream: controller.audioPlayer.positionStream,
+            initialData: controller.position,
+            builder: (context, snapshot) {
+              final position = snapshot.data ?? Duration.zero;
+              final duration = controller.duration.inMilliseconds > 0 ? controller.duration : const Duration(seconds: 1);
+              final totalMs = duration.inMilliseconds;
+              final value = position.inMilliseconds.clamp(0, totalMs).toDouble();
+              return Column(
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
+                      overlayShape: SliderComponentShape.noOverlay,
+                      activeTrackColor: Colors.white.withOpacity(0.78),
+                      inactiveTrackColor: Colors.white.withOpacity(0.24),
                     ),
-                    Text(
-                      '-${widget.formatDuration(duration - position)}',
-                      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
-                    ),
-                  ],
+                    child: Slider(
+                      min: 0,
+                      max: totalMs.toDouble(),
+                      value: value,
+                      onChanged: (ms) {
+                        unawaited(controller.seek(Duration(milliseconds: ms.toInt())));
+                      },
+                   ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        widget.formatDuration(position),
+                        style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        '-${widget.formatDuration(duration - position)}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+          const Spacer(),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: controller.canGoPrevious ? () => unawaited(controller.skipPrevious()) : null,
+                icon: Icon(
+                  CupertinoIcons.backward_end_fill,
+                  color: controller.canGoPrevious ? Colors.white54 : Colors.white24,
+                  size: 38,
                 ),
-              ],
-            );
-          },
-        ),
-        const Spacer(),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(CupertinoIcons.backward_end_fill, color: Colors.white54, size: 38),
-            const SizedBox(width: 30),
-            IconButton(
-              onPressed: () => unawaited(controller.playPause()),
-              icon: Icon(
-                controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
-                color: Colors.white,
-                size: 70,
               ),
+              const SizedBox(width: 30),
+              IconButton(
+                onPressed: () => unawaited(controller.playPause()),
+                icon: Icon(
+                  controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
+                  color: Colors.white,
+                  size: 70,
+                ),
+              ),
+              const SizedBox(width: 30),
+              IconButton(
+                onPressed: controller.canGoNext ? () => unawaited(controller.skipNext()) : null,
+                icon: Icon(
+                  CupertinoIcons.forward_end_fill,
+                  color: controller.canGoNext ? Colors.white54 : Colors.white24,
+                  size: 38,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+        ],
             ),
             const SizedBox(width: 30),
             const Icon(CupertinoIcons.forward_end_fill, color: Colors.white54, size: 38),
           ],
         ),
         const Spacer(),
+        ],
         Row(
           children: [
             const Icon(Icons.volume_down_rounded, color: Colors.white54, size: 20),
@@ -853,11 +908,235 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: const [
-            Icon(Icons.chat_bubble_outline_rounded, color: Colors.white54, size: 25),
-            Icon(Icons.airplay_rounded, color: Colors.white54, size: 25),
-            Icon(Icons.format_list_bulleted_rounded, color: Colors.white70, size: 29),
+          children: [
+            const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white54, size: 25),
+            const Icon(Icons.airplay_rounded, color: Colors.white54, size: 25),
+            IconButton(
+              onPressed: () => widget.onQueueModeChanged(!widget.queueMode),
+              icon: Icon(
+                Icons.format_list_bulleted_rounded,
+                color: widget.queueMode ? Colors.white : Colors.white70,
+                size: 29,
+              ),
+            ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineQueuePanel extends StatelessWidget {
+  final PlaybackController controller;
+
+  const _InlineQueuePanel({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLocal = controller.localQueue.isNotEmpty;
+    final itemCount = isLocal ? controller.localQueue.length : controller.remoteQueue.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Continue Playing',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          isLocal ? 'From Library' : 'From Apple Music',
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: itemCount == 0
+              ? const Center(
+                  child: Text(
+                    'No queue available',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                )
+              : ListView.builder(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  itemCount: itemCount,
+                  itemBuilder: (context, index) {
+                    if (isLocal) {
+                      final song = controller.localQueue[index];
+                      final selected = song.data == controller.source;
+                      return _InlineLocalQueueTile(
+                        song: song,
+                        selected: selected,
+                        onTap: () => unawaited(controller.playLocalQueue(controller.localQueue, index)),
+                      );
+                    }
+                    final song = controller.remoteQueue[index];
+                    final selected = index == controller.remoteIndex;
+                    return _InlineRemoteQueueTile(
+                      song: song,
+                      selected: selected,
+                      onTap: () => unawaited(controller.playRemoteQueue(controller.remoteQueue, index)),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineLocalQueueTile extends StatelessWidget {
+  final SongModel song;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _InlineLocalQueueTile({
+    required this.song,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: QueryArtworkWidget(
+                id: song.id,
+                type: ArtworkType.AUDIO,
+                artworkWidth: 48,
+                artworkHeight: 48,
+                artworkFit: BoxFit.cover,
+                quality: 100,
+                nullArtworkWidget: const _SmallArtworkFallback(),
+                errorBuilder: (_, __, ___) => const _SmallArtworkFallback(),
+              ),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: _InlineQueueText(
+                title: song.title,
+                artist: song.artist ?? 'Unknown artist',
+                selected: selected,
+              ),
+            ),
+            Icon(
+              selected ? Icons.equalizer_rounded : Icons.drag_handle_rounded,
+              color: selected ? const Color(0xFFFF2D55) : Colors.white30,
+              size: selected ? 22 : 28,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineRemoteQueueTile extends StatelessWidget {
+  final Map<String, dynamic> song;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _InlineRemoteQueueTile({
+    required this.song,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = song['image']?.toString();
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: imageUrl == null || imageUrl.isEmpty
+                    ? const _SmallArtworkFallback()
+                    : CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => const _SmallArtworkFallback(),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: _InlineQueueText(
+                title: song['title']?.toString() ?? 'Unknown title',
+                artist: song['artist']?.toString() ?? 'Unknown artist',
+                selected: selected,
+              ),
+            ),
+            Icon(
+              selected ? Icons.equalizer_rounded : Icons.drag_handle_rounded,
+              color: selected ? const Color(0xFFFF2D55) : Colors.white30,
+              size: selected ? 22 : 28,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineQueueText extends StatelessWidget {
+  final String title;
+  final String artist;
+  final bool selected;
+
+  const _InlineQueueText({
+    required this.title,
+    required this.artist,
+    required this.selected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: selected ? const Color(0xFFFF6B7A) : Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          artist,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );
