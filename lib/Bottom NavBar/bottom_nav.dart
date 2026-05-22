@@ -179,25 +179,30 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
                     ),
             ),
           ),
-          ValueListenableBuilder<double>(
-            valueListenable: _playerHeight,
-            builder: (context, height, _) {
-              final progress = _playerProgress(height, maxPlayerHeight);
-              if (progress <= 0.001 || !_playbackController.hasTrack) {
-                return const SizedBox.shrink();
-              }
-              return _PersistentPlayerSheet(
-                controller: _playbackController,
-                height: height,
-                progress: progress,
-                safeBottom: safeBottom,
-                isMiniMode: _isMiniMode && !_showSearchPage,
-                queueMode: _playerQueueMode,
-                onTapCollapsed: _expandPlayer,
-                onCollapse: _collapsePlayer,
-                onQueueModeChanged: (value) => setState(() => _playerQueueMode = value),
-                onVerticalDragUpdate: _handlePlayerDragUpdate,
-                onVerticalDragEnd: _handlePlayerDragEnd,
+          AnimatedBuilder(
+            animation: _playbackController,
+            builder: (context, _) {
+              return ValueListenableBuilder<double>(
+                valueListenable: _playerHeight,
+                builder: (context, height, _) {
+                  final progress = _playerProgress(height, maxPlayerHeight);
+                  if (progress <= 0.001 || !_playbackController.hasTrack) {
+                    return const SizedBox.shrink();
+                  }
+                  return _PersistentPlayerSheet(
+                    controller: _playbackController,
+                    height: height,
+                    progress: progress,
+                    safeBottom: safeBottom,
+                    isMiniMode: _isMiniMode && !_showSearchPage,
+                    queueMode: _playerQueueMode,
+                    onTapCollapsed: _expandPlayer,
+                    onCollapse: _collapsePlayer,
+                    onQueueModeChanged: (value) => setState(() => _playerQueueMode = value),
+                    onVerticalDragUpdate: _handlePlayerDragUpdate,
+                    onVerticalDragEnd: _handlePlayerDragEnd,
+                  );
+                },
               );
             },
           ),
@@ -594,6 +599,7 @@ class _PersistentPlayerSheet extends StatelessWidget {
     final titleRight = lerpDouble(74.0, expandedTitleRight, alpha)!;
     final titleTop = lerpDouble(10.0, expandedTitleTop, alpha)!;
     final maxiOpacity = _maxiOpacity(alpha);
+    final gradientColors = controller.backgroundGradient;
 
     return Positioned(
       left: horizontalMargin,
@@ -639,9 +645,9 @@ class _PersistentPlayerSheet extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Color.lerp(const Color(0xCC1C1C1E), const Color(0xDD5A421B), alpha)!,
-                            Color.lerp(const Color(0xEE171719), const Color(0xEE242426), alpha)!,
-                            const Color(0xFF121212),
+                            Color.lerp(const Color(0xFF1C1C1E), gradientColors[0], alpha)!,
+                            Color.lerp(const Color(0xFF171719), gradientColors[1], alpha)!,
+                            gradientColors[2],
                           ],
                           stops: const [0, 0.48, 1],
                         ),

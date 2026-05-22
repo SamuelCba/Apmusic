@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 class PlaybackController extends ChangeNotifier {
   PlaybackController._() {
@@ -32,6 +34,7 @@ class PlaybackController extends ChangeNotifier {
           artworkId: song.id,
           remoteIndex: null,
         );
+        unawaited(_updateLocalPalette(song));
       } else if (!isLocalTrack && index >= 0 && index < remoteQueue.length) {
         final song = remoteQueue[index];
         _setMetadataSilently(
@@ -43,6 +46,7 @@ class PlaybackController extends ChangeNotifier {
           artworkUrl: song['image']?.toString(),
           remoteIndex: index,
         );
+        unawaited(_updateRemotePalette(song['image']?.toString()));
       }
       notifyListeners();
     });
@@ -70,7 +74,14 @@ class PlaybackController extends ChangeNotifier {
   List<SongModel> localQueue = [];
   List<Map<String, dynamic>> remoteQueue = [];
   final OnAudioQuery _audioQuery = OnAudioQuery();
+  final Map<int, Uint8List?> _localArtworkBytesCache = {};
   final Map<int, Uri?> _localArtworkUriCache = {};
+  List<Color> backgroundGradient = const [
+    Color(0xFF5A421B),
+    Color(0xFF242426),
+    Color(0xFF121212),
+  ];
+  int _paletteRequestId = 0;
 
   bool get hasTrack => source != null || artworkUrl != null;
   bool get canGoPrevious => audioPlayer.hasPrevious;
@@ -128,9 +139,77 @@ class PlaybackController extends ChangeNotifier {
     );
   }
 
-  Future<Uri?> _localArtworkUri(SongModel song) async {
-    if (_localArtworkUriCache.containsKey(song.id)) {
-      return _localArtworkUriCache[song.id];
+  Color _deepen(Color color, double amount) {
+    return Color.lerp(color, Colors.black, amount) ?? color;
+  }
+
+  Color _paletteColor(PaletteGenerator palette) {
+    return palette.dominantColor?.color ??
+        palette.vibrantColor?.color ??
+        palette.darkVibrantColor?.color ??
+        palette.mutedColor?.color ??
+        backgroundGradient.first;
+  }
+
+  void _setFallbackPalette() {
+    _paletteRequestId++;
+    backgroundGradient = const [
+      Color(0xFF5A421B),
+      Color(0xFF242426),
+      Color(0xFF121212),
+    ];
+    notifyListeners();
+  }
+
+  Future<void> _updatePaletteFromProvider(ImageProvider provider) async {
+    final requestId = ++_paletteRequestId;
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(
+        provider,
+        size: const Size(220, 220),
+        maximumColorCount: 16,
+      );
+      if (requestId != _paletteRequestId) return;
+
+      final primary = _paletteColor(palette);
+      final secondary = palette.darkMutedColor?.color ??
+          palette.mutedColor?.color ??
+          palette.darkVibrantColor?.color ??
+          primary;
+      backgroundGradient = [
+        _deepen(primary, 0.44),
+        _deepen(secondary, 0.62),
+        const Color(0xFF121212),
+      ];
+      notifyListeners();
+    } catch (_) {
+      if (requestId == _paletteRequestId) {
+        backgroundGradient = const [
+          Color(0xFF5A421B),
+          Color(0xFF242426),
+          Color(0xFF121212),
+        ];
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> _updateRemotePalette(String? artworkUrl) async {
+    if (artworkUrl == null || artworkUrl.isEmpty) {
+      _setFallbackPalette();
+      return;
+    }
+    final uri = Uri.tryParse(artworkUrl);
+    if (uri == null) {
+      _setFallbackPalette();
+      return;
+    }
+    await _updatePaletteFromProvider(NetworkImage(uri.toString()));
+  }
+
+  Future<Uint8List?> _localArtworkBytes(SongModel song) async {
+    if (_localArtworkBytesCache.containsKey(song.id)) {
+      return _localArtworkBytesCache[song.id];
     }
 
     try {
@@ -141,6 +220,30 @@ class PlaybackController extends ChangeNotifier {
         size: 900,
         quality: 100,
       );
+      _localArtworkBytesCache[song.id] = bytes == null || bytes.isEmpty ? null : bytes;
+      return _localArtworkBytesCache[song.id];
+    } catch (_) {
+      _localArtworkBytesCache[song.id] = null;
+      return null;
+    }
+  }
+
+  Future<void> _updateLocalPalette(SongModel song) async {
+    final bytes = await _localArtworkBytes(song);
+    if (bytes == null || bytes.isEmpty) {
+      _setFallbackPalette();
+      return;
+    }
+    await _updatePaletteFromProvider(MemoryImage(bytes));
+  }
+
+  Future<Uri?> _localArtworkUri(SongModel song) async {
+    if (_localArtworkUriCache.containsKey(song.id)) {
+      return _localArtworkUriCache[song.id];
+    }
+
+    try {
+      final bytes = await _localArtworkBytes(song);
       if (bytes == null || bytes.isEmpty) {
         _localArtworkUriCache[song.id] = null;
         return null;
@@ -191,6 +294,7 @@ class PlaybackController extends ChangeNotifier {
       artworkUrl: current['image']?.toString(),
       remoteIndex: safeIndex,
     );
+    unawaited(_updateRemotePalette(current['image']?.toString()));
     final playlist = ConcatenatingAudioSource(
       children: [
         for (var i = 0; i < queue.length; i++)
@@ -220,6 +324,7 @@ class PlaybackController extends ChangeNotifier {
       source: current.data,
       artworkId: current.id,
     );
+    unawaited(_updateLocalPalette(current));
     final mediaItems = await Future.wait([
       for (final song in queue) _localMediaItem(song),
     ]);

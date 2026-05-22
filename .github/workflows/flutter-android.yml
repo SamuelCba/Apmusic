@@ -23,6 +23,19 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Remove stop button from media notification
+        run: |
+          PACKAGE_FILE="$(find "$PUB_CACHE/hosted" -path "*/just_audio_background-*/lib/just_audio_background.dart" -print -quit)"
+          if [ -z "$PACKAGE_FILE" ]; then
+            echo "just_audio_background source was not found in PUB_CACHE"
+            exit 1
+          fi
+          perl -0pi -e 's/\n\s*MediaControl\.stop,//' "$PACKAGE_FILE"
+          if grep -q "MediaControl.stop," "$PACKAGE_FILE"; then
+            echo "MediaControl.stop is still present in notification controls"
+            exit 1
+          fi
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
