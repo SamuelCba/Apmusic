@@ -33,7 +33,7 @@ void main() async {
   runApp(
     LiquidGlassWidgets.wrap(
       const MyApp(),
-      adaptiveQuality: true,
+      adaptiveQuality: false,
     ),
   );
 }

@@ -1,5 +1,9 @@
 // ignore_for_file: prefer_const_literals_to_create_immutables
 
+import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -7,11 +11,9 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:musicplayer/pages/browse_page.dart';
 import 'package:musicplayer/pages/home_page.dart';
 import 'package:musicplayer/pages/library_page.dart';
-import 'package:musicplayer/pages/music_player.dart';
 import 'package:musicplayer/pages/radio.dart';
 import 'package:musicplayer/pages/search_page.dart';
 import 'package:musicplayer/services/playback_controller.dart';
-import 'package:musicplayer/webView/webViewContainer.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
 
 class FirstPage extends StatefulWidget {
@@ -21,11 +23,82 @@ class FirstPage extends StatefulWidget {
   State<FirstPage> createState() => _FirstPageState();
 }
 
-class _FirstPageState extends State<FirstPage> {
+class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMixin {
+  static const double _collapsedPlayerHeight = 72.0;
+  static const double _snapThreshold = 0.40;
+
   int _selected_index = 0;
   bool _isMiniMode = false;
   bool _showSearchPage = false;
   final PlaybackController _playbackController = PlaybackController.instance;
+  late final ValueNotifier<double> _playerHeight;
+  late final AnimationController _snapController;
+  Animation<double>? _snapAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _playerHeight = ValueNotifier<double>(_collapsedPlayerHeight);
+    _snapController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..addListener(() {
+        final animation = _snapAnimation;
+        if (animation != null) _playerHeight.value = animation.value;
+      });
+  }
+
+  @override
+  void dispose() {
+    _snapController.dispose();
+    _playerHeight.dispose();
+    super.dispose();
+  }
+
+  double _maxPlayerHeight(BuildContext context) => MediaQuery.sizeOf(context).height;
+
+  double _playerProgress(double height, double maxHeight) {
+    return ((height - _collapsedPlayerHeight) / (maxHeight - _collapsedPlayerHeight)).clamp(0.0, 1.0).toDouble();
+  }
+
+  void _animatePlayerTo(double targetHeight) {
+    _snapController.stop();
+    _snapAnimation = Tween<double>(
+      begin: _playerHeight.value,
+      end: targetHeight,
+    ).animate(
+      CurvedAnimation(
+        parent: _snapController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _snapController
+      ..reset()
+      ..forward();
+  }
+
+  void _expandPlayer() {
+    _animatePlayerTo(_maxPlayerHeight(context));
+  }
+
+  void _collapsePlayer() {
+    _animatePlayerTo(_collapsedPlayerHeight);
+  }
+
+  void _handlePlayerDragUpdate(DragUpdateDetails details) {
+    final maxHeight = _maxPlayerHeight(context);
+    final delta = details.primaryDelta ?? 0;
+    _snapController.stop();
+    _playerHeight.value = (_playerHeight.value - delta).clamp(_collapsedPlayerHeight, maxHeight).toDouble();
+  }
+
+  void _handlePlayerDragEnd(DragEndDetails details) {
+    final maxHeight = _maxPlayerHeight(context);
+    final velocity = details.primaryVelocity ?? 0;
+    final progress = _playerProgress(_playerHeight.value, maxHeight);
+    final expand = velocity < -500 || (velocity < 500 && progress > _snapThreshold);
+    _animatePlayerTo(expand ? maxHeight : _collapsedPlayerHeight);
+  }
 
   void _navgateBottomBar(int index) {
     final restoreExpandedBar = _isMiniMode && index == _selected_index;
@@ -60,37 +133,6 @@ class _FirstPageState extends State<FirstPage> {
     });
   }
 
-  void _openPlayer() {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 520),
-        reverseTransitionDuration: const Duration(milliseconds: 380),
-        pageBuilder: (_, __, ___) => const WebView(child: MusicPlayer()),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-          final fadeIn = CurvedAnimation(
-            parent: animation,
-            curve: const Interval(0.0, 0.55, curve: Curves.easeOut),
-          );
-          return FadeTransition(
-            opacity: fadeIn,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.72, end: 1.0).animate(curved),
-              alignment: Alignment.bottomCenter,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.30),
-                  end: Offset.zero,
-                ).animate(curved),
-                child: child,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   bool _handleScroll(ScrollNotification notification) {
     if (_showSearchPage || notification.metrics.axis != Axis.vertical) return false;
     final mini = notification.metrics.pixels > 50;
@@ -109,86 +151,76 @@ class _FirstPageState extends State<FirstPage> {
 
   @override
   Widget build(BuildContext context) {
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    final maxPlayerHeight = _maxPlayerHeight(context);
+
     return Scaffold(
       extendBody: true,
       resizeToAvoidBottomInset: false,
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _handleScroll,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeOutCubic,
-          child: _showSearchPage
-              ? const SearchPage(
-                  key: ValueKey('search'),
-                  autoFocus: false,
-                  showSearchField: false,
-                )
-              : KeyedSubtree(
-                  key: ValueKey('tab-$_selected_index'),
-                  child: _pages[_selected_index],
-                ),
-        ),
-      ),
-      bottomNavigationBar: AnimatedBuilder(
-        animation: _playbackController,
-        builder: (context, _) {
-          final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
-          final hasTrack = _playbackController.hasTrack;
-          final hideMiniForSearchKeyboard = _showSearchPage && MediaQuery.viewInsetsOf(context).bottom > 0;
-          const expandedNavBarH = 72.0;
-          const collapsedNavBarH = 50.0;
-          const pillGap = 14.0;
-          const collapsedPillW = 50.0;
-          final activeNavBarH = _showSearchPage ? collapsedNavBarH : expandedNavBarH;
-          final aboveBarBottom = activeNavBarH + pillGap + safeBottom;
-          final miniBarBottom = 16.0 + safeBottom;
-          final miniPlayInset = 20.0 + collapsedPillW + 6.0;
-          final compactPlayer = _isMiniMode && !_showSearchPage;
-
-          return SizedBox(
-            height: (hasTrack ? 152 : 88) + safeBottom,
-            child: Stack(
-              alignment: Alignment.bottomCenter,
-              children: [
-                if (hasTrack)
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 420),
-                    curve: Curves.easeInOutCubic,
-                    left: compactPlayer ? miniPlayInset : 20,
-                    right: compactPlayer ? miniPlayInset : 20,
-                    bottom: compactPlayer ? miniBarBottom : aboveBarBottom,
-                    height: 50,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 180),
-                      opacity: hideMiniForSearchKeyboard ? 0 : 1,
-                      child: IgnorePointer(
-                        ignoring: hideMiniForSearchKeyboard,
-                        child: _LiquidMiniPlayer(
+      body: Stack(
+        children: [
+          NotificationListener<ScrollNotification>(
+            onNotification: _handleScroll,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeOutCubic,
+              child: _showSearchPage
+                  ? const SearchPage(
+                      key: ValueKey('search'),
+                      autoFocus: false,
+                      showSearchField: false,
+                    )
+                  : KeyedSubtree(
+                      key: ValueKey('tab-$_selected_index'),
+                      child: _pages[_selected_index],
+                    ),
+            ),
+          ),
+          AnimatedBuilder(
+            animation: _playbackController,
+            builder: (context, _) {
+              return ValueListenableBuilder<double>(
+                valueListenable: _playerHeight,
+                builder: (context, height, _) {
+                  final progress = _playerProgress(height, maxPlayerHeight);
+                  return Stack(
+                    children: [
+                      if (_playbackController.hasTrack)
+                        _PersistentPlayerSheet(
                           controller: _playbackController,
-                          onOpen: _openPlayer,
-                          compact: compactPlayer,
+                          height: height,
+                          progress: progress,
+                          safeBottom: safeBottom,
+                          isMiniMode: _isMiniMode && !_showSearchPage,
+                          onTapCollapsed: _expandPlayer,
+                          onCollapse: _collapsePlayer,
+                          onVerticalDragUpdate: _handlePlayerDragUpdate,
+                          onVerticalDragEnd: _handlePlayerDragEnd,
+                        ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: safeBottom,
+                        child: Transform.translate(
+                          offset: Offset(0, progress * (104 + safeBottom)),
+                          child: _LiquidNavBar(
+                            selectedIndex: _selected_index,
+                            isMiniMode: _isMiniMode,
+                            isSearching: _showSearchPage,
+                            onSelected: _navgateBottomBar,
+                            onSearch: _openSearch,
+                            onSearchClosed: _closeSearch,
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: safeBottom,
-                  child: _LiquidNavBar(
-                    selectedIndex: _selected_index,
-                    isMiniMode: _isMiniMode,
-                    isSearching: _showSearchPage,
-                    onSelected: _navgateBottomBar,
-                    onSearch: _openSearch,
-                    onSearchClosed: _closeSearch,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -309,89 +341,358 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
   }
 }
 
-class _LiquidMiniPlayer extends StatelessWidget {
+class _PersistentPlayerSheet extends StatelessWidget {
   final PlaybackController controller;
-  final VoidCallback onOpen;
-  final bool compact;
+  final double height;
+  final double progress;
+  final double safeBottom;
+  final bool isMiniMode;
+  final VoidCallback onTapCollapsed;
+  final VoidCallback onCollapse;
+  final GestureDragUpdateCallback onVerticalDragUpdate;
+  final GestureDragEndCallback onVerticalDragEnd;
 
-  const _LiquidMiniPlayer({
+  const _PersistentPlayerSheet({
     required this.controller,
-    required this.onOpen,
-    this.compact = false,
+    required this.height,
+    required this.progress,
+    required this.safeBottom,
+    required this.isMiniMode,
+    required this.onTapCollapsed,
+    required this.onCollapse,
+    required this.onVerticalDragUpdate,
+    required this.onVerticalDragEnd,
   });
+
+  static const double _expandedTopArtwork = 100.0;
+
+  String _format(Duration duration) {
+    final safe = duration.isNegative ? Duration.zero : duration;
+    final minutes = safe.inMinutes.remainder(60);
+    final seconds = safe.inSeconds.remainder(60);
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  double _miniOpacity(double alpha) => math.max(0.0, 1.0 - 4 * alpha);
+
+  double _maxiOpacity(double alpha) => math.max(0.0, 4 * alpha - 3.0);
 
   @override
   Widget build(BuildContext context) {
-    return GlassButton(
-      onTap: onOpen,
-      quality: GlassQuality.premium,
-      useOwnLayer: true,
-      shape: const LiquidRoundedSuperellipse(borderRadius: 28),
-      settings: const LiquidGlassSettings(
-        glassColor: Color(0xCC1C1C1E),
-        thickness: 30,
-        blur: 3,
-        lightIntensity: 0.35,
-        chromaticAberration: .01,
-      ),
-      icon: Padding(
-        padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 14),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(7),
-              child: SizedBox(
-                width: compact ? 34 : 38,
-                height: compact ? 34 : 38,
-                child: _MiniArtwork(controller: controller),
+    final width = MediaQuery.sizeOf(context).width;
+    final alpha = progress.clamp(0.0, 1.0).toDouble();
+    final navOffset = 64.0 + 16.0 + safeBottom + 14.0;
+    final bottom = lerpDouble(navOffset, 0, alpha)!;
+    final horizontalMargin = lerpDouble(isMiniMode ? 76.0 : 16.0, 0, alpha)!;
+    final artworkSize = 48.0 + alpha * (width * 0.85 - 48.0);
+    final artworkLeft = 16.0 + alpha * ((width - artworkSize) / 2.0 - 16.0);
+    final artworkTop = lerpDouble(12.0, _expandedTopArtwork, alpha)!;
+    final artworkRadius = 8.0 + alpha * 16.0;
+    final miniOpacity = _miniOpacity(alpha);
+    final maxiOpacity = _maxiOpacity(alpha);
+
+    return Positioned(
+      left: horizontalMargin,
+      right: horizontalMargin,
+      bottom: bottom,
+      height: height,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: alpha < 0.08 ? onTapCollapsed : null,
+        onVerticalDragUpdate: onVerticalDragUpdate,
+        onVerticalDragEnd: onVerticalDragEnd,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(lerpDouble(28.0, 0.0, alpha)!),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18 * (1 - alpha), sigmaY: 18 * (1 - alpha)),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Color.lerp(const Color(0xCC1C1C1E), Colors.transparent, alpha),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color.lerp(const Color(0xFF1C1C1E), const Color(0xFF513C18), alpha)!,
+                    Color.lerp(const Color(0xFF171719), const Color(0xFF28282A), alpha)!,
+                    const Color(0xFF121212),
+                  ],
+                  stops: const [0, 0.46, 1],
+                ),
+                border: Border.all(
+                  color: Colors.white.withOpacity(lerpDouble(0.12, 0.0, alpha)!),
+                ),
               ),
-            ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  Text(
-                    controller.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: compact ? 13 : 14,
+                  Positioned(
+                    left: artworkLeft,
+                    top: artworkTop,
+                    width: artworkSize,
+                    height: artworkSize,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(artworkRadius),
+                      child: _PlayerArtwork(
+                        controller: controller,
+                        size: artworkSize,
+                      ),
                     ),
                   ),
-                  if (!compact)
-                    Text(
-                      controller.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      ignoring: miniOpacity == 0,
+                      child: Opacity(
+                        opacity: miniOpacity,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(78, 10, 12, 10),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      controller.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      controller.artist,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: () => unawaited(controller.playPause()),
+                                icon: Icon(
+                                  controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                              ),
+                              const Icon(CupertinoIcons.forward_end_fill, color: Colors.white60, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
+                  ),
+                  Positioned(
+                    left: 22,
+                    right: 22,
+                    top: artworkTop + artworkSize + 30,
+                    bottom: math.max(18.0, safeBottom + 18),
+                    child: IgnorePointer(
+                      ignoring: maxiOpacity == 0,
+                      child: Opacity(
+                        opacity: maxiOpacity,
+                        child: _ExpandedPlayerControls(
+                          controller: controller,
+                          onCollapse: onCollapse,
+                          formatDuration: _format,
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-            IconButton(
-              onPressed: () => controller.playPause(),
-              icon: Icon(
-                controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
-                color: Colors.white,
-                size: compact ? 21 : 24,
-              ),
-            ),
-            if (!compact) const Icon(CupertinoIcons.forward_end_fill, color: Colors.white60, size: 20),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _MiniArtwork extends StatelessWidget {
+class _ExpandedPlayerControls extends StatefulWidget {
   final PlaybackController controller;
+  final VoidCallback onCollapse;
+  final String Function(Duration duration) formatDuration;
 
-  const _MiniArtwork({required this.controller});
+  const _ExpandedPlayerControls({
+    required this.controller,
+    required this.onCollapse,
+    required this.formatDuration,
+  });
+
+  @override
+  State<_ExpandedPlayerControls> createState() => _ExpandedPlayerControlsState();
+}
+
+class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
+  double _volume = 1.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    controller.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    controller.artist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () {},
+              icon: const Icon(CupertinoIcons.star, color: Colors.white70),
+            ),
+            IconButton(
+              onPressed: () {},
+              icon: const Icon(CupertinoIcons.ellipsis, color: Colors.white70),
+            ),
+            IconButton(
+              onPressed: widget.onCollapse,
+              icon: const Icon(CupertinoIcons.chevron_down, color: Colors.white70),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        StreamBuilder<Duration>(
+          stream: controller.audioPlayer.positionStream,
+          initialData: controller.position,
+          builder: (context, snapshot) {
+            final position = snapshot.data ?? Duration.zero;
+            final duration = controller.duration.inMilliseconds > 0 ? controller.duration : const Duration(seconds: 1);
+            final totalMs = duration.inMilliseconds;
+            final value = position.inMilliseconds.clamp(0, totalMs).toDouble();
+            return Column(
+              children: [
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
+                    overlayShape: SliderComponentShape.noOverlay,
+                    activeTrackColor: Colors.white.withOpacity(0.78),
+                    inactiveTrackColor: Colors.white.withOpacity(0.24),
+                  ),
+                  child: Slider(
+                    min: 0,
+                    max: totalMs.toDouble(),
+                    value: value,
+                    onChanged: (ms) {
+                      unawaited(controller.seek(Duration(milliseconds: ms.toInt())));
+                    },
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      widget.formatDuration(position),
+                      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                    Text(
+                      '-${widget.formatDuration(duration - position)}',
+                      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+        const Spacer(),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(CupertinoIcons.backward_end_fill, color: Colors.white54, size: 38),
+            const SizedBox(width: 30),
+            IconButton(
+              onPressed: () => unawaited(controller.playPause()),
+              icon: Icon(
+                controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
+                color: Colors.white,
+                size: 70,
+              ),
+            ),
+            const SizedBox(width: 30),
+            const Icon(CupertinoIcons.forward_end_fill, color: Colors.white54, size: 38),
+          ],
+        ),
+        const Spacer(),
+        Row(
+          children: [
+            const Icon(Icons.volume_down_rounded, color: Colors.white54, size: 20),
+            Expanded(
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
+                  overlayShape: SliderComponentShape.noOverlay,
+                  activeTrackColor: Colors.white.withOpacity(0.76),
+                  inactiveTrackColor: Colors.white.withOpacity(0.24),
+                ),
+                child: Slider(
+                  min: 0,
+                  max: 1,
+                  value: _volume,
+                  onChanged: (value) {
+                    setState(() => _volume = value);
+                    unawaited(controller.setVolume(value));
+                  },
+                ),
+              ),
+            ),
+            const Icon(Icons.volume_up_rounded, color: Colors.white54, size: 20),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: const [
+            Icon(Icons.chat_bubble_outline_rounded, color: Colors.white54, size: 25),
+            Icon(Icons.airplay_rounded, color: Colors.white54, size: 25),
+            Icon(Icons.format_list_bulleted_rounded, color: Colors.white70, size: 29),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PlayerArtwork extends StatelessWidget {
+  final PlaybackController controller;
+  final double size;
+
+  const _PlayerArtwork({
+    required this.controller,
+    required this.size,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -400,12 +701,12 @@ class _MiniArtwork extends StatelessWidget {
         id: controller.artworkId!,
         type: ArtworkType.AUDIO,
         artworkFit: BoxFit.cover,
-        artworkWidth: 38,
-        artworkHeight: 38,
+        artworkWidth: size,
+        artworkHeight: size,
         quality: 100,
         artworkBorder: BorderRadius.zero,
-        nullArtworkWidget: const _MiniArtworkFallback(),
-        errorBuilder: (_, __, ___) => const _MiniArtworkFallback(),
+        nullArtworkWidget: _MiniArtworkFallback(size: size),
+        errorBuilder: (_, __, ___) => _MiniArtworkFallback(size: size),
       );
     }
 
@@ -413,22 +714,32 @@ class _MiniArtwork extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: controller.artworkUrl!,
         fit: BoxFit.cover,
-        errorWidget: (_, __, ___) => const _MiniArtworkFallback(),
+        width: size,
+        height: size,
+        errorWidget: (_, __, ___) => _MiniArtworkFallback(size: size),
       );
     }
 
-    return const _MiniArtworkFallback();
+    return _MiniArtworkFallback(size: size);
   }
 }
 
 class _MiniArtworkFallback extends StatelessWidget {
-  const _MiniArtworkFallback();
+  final double size;
+
+  const _MiniArtworkFallback({required this.size});
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: size,
+      height: size,
       color: const Color(0xFF242426),
-      child: const Icon(Icons.music_note_rounded, color: Colors.white54, size: 22),
+      child: Icon(
+        Icons.music_note_rounded,
+        color: Colors.white54,
+        size: math.min(size * 0.52, 64),
+      ),
     );
   }
 }
