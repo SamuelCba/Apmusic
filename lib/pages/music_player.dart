@@ -1309,23 +1309,28 @@ class _MusicPlayerState extends State<MusicPlayer> {
                 children: [
                   _buildTopHandle(),
                   Center(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(22),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.32),
-                            blurRadius: 28,
-                            offset: const Offset(0, 18),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragUpdate: _handleHandleDragUpdate,
+                      onVerticalDragEnd: _handleHandleDragEnd,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(22),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.32),
+                              blurRadius: 28,
+                              offset: const Offset(0, 18),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(22),
+                          child: SizedBox(
+                            width: artSize,
+                            height: artSize,
+                            child: _buildArtwork(artSize),
                           ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(22),
-                        child: SizedBox(
-                          width: artSize,
-                          height: artSize,
-                          child: _buildArtwork(artSize),
                         ),
                       ),
                     ),

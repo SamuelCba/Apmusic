@@ -15,7 +15,6 @@ class PlaybackController extends ChangeNotifier {
     });
     _positionSubscription = audioPlayer.positionStream.listen((value) {
       position = value;
-      notifyListeners();
     });
   }
 

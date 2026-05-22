@@ -8,10 +8,12 @@ import 'package:on_audio_query_forked/on_audio_query.dart';
 
 class SearchPage extends StatefulWidget {
   final bool autoFocus;
+  final bool showSearchField;
 
   const SearchPage({
     super.key,
     this.autoFocus = false,
+    this.showSearchField = true,
   });
 
   @override
@@ -124,11 +126,14 @@ class _SearchPageState extends State<SearchPage> {
                         letterSpacing: -0.5,
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    _SearchField(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                    ),
+                    if (widget.showSearchField) ...[
+                      const SizedBox(height: 18),
+                      _SearchField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                      ),
+                    ] else
+                      const SizedBox(height: 6),
                   ],
                 ),
               ),

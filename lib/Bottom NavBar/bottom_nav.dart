@@ -28,16 +28,34 @@ class _FirstPageState extends State<FirstPage> {
   final PlaybackController _playbackController = PlaybackController.instance;
 
   void _navgateBottomBar(int index) {
+    final restoreExpandedBar = _isMiniMode && index == _selected_index;
     setState(() {
       _selected_index = index;
       _showSearchPage = false;
       _isMiniMode = false;
     });
+    if (restoreExpandedBar) {
+      final controller = PrimaryScrollController.maybeOf(context);
+      if (controller != null && controller.hasClients) {
+        controller.animateTo(
+          0,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutQuart,
+        );
+      }
+    }
   }
 
   void _openSearch() {
     setState(() {
       _showSearchPage = true;
+      _isMiniMode = false;
+    });
+  }
+
+  void _closeSearch() {
+    setState(() {
+      _showSearchPage = false;
       _isMiniMode = false;
     });
   }
@@ -101,7 +119,11 @@ class _FirstPageState extends State<FirstPage> {
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeOutCubic,
           child: _showSearchPage
-              ? const SearchPage(key: ValueKey('search'), autoFocus: true)
+              ? const SearchPage(
+                  key: ValueKey('search'),
+                  autoFocus: false,
+                  showSearchField: false,
+                )
               : KeyedSubtree(
                   key: ValueKey('tab-$_selected_index'),
                   child: _pages[_selected_index],
@@ -114,8 +136,18 @@ class _FirstPageState extends State<FirstPage> {
           final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
           final hasTrack = _playbackController.hasTrack;
           final hideMiniForSearchKeyboard = _showSearchPage && MediaQuery.viewInsetsOf(context).bottom > 0;
+          const expandedNavBarH = 72.0;
+          const collapsedNavBarH = 50.0;
+          const pillGap = 14.0;
+          const collapsedPillW = 50.0;
+          final activeNavBarH = _showSearchPage ? collapsedNavBarH : expandedNavBarH;
+          final aboveBarBottom = activeNavBarH + pillGap + safeBottom;
+          final miniBarBottom = 16.0 + safeBottom;
+          final miniPlayInset = 20.0 + collapsedPillW + 6.0;
+          final compactPlayer = _isMiniMode && !_showSearchPage;
+
           return SizedBox(
-            height: (hasTrack ? 142 : 84) + safeBottom,
+            height: (hasTrack ? 152 : 88) + safeBottom,
             child: Stack(
               alignment: Alignment.bottomCenter,
               children: [
@@ -123,10 +155,10 @@ class _FirstPageState extends State<FirstPage> {
                   AnimatedPositioned(
                     duration: const Duration(milliseconds: 420),
                     curve: Curves.easeInOutCubic,
-                    left: _isMiniMode ? 78 : 18,
-                    right: _isMiniMode ? 78 : 18,
-                    bottom: _isMiniMode ? 16 + safeBottom : 78 + safeBottom,
-                    height: _isMiniMode ? 50 : 54,
+                    left: compactPlayer ? miniPlayInset : 20,
+                    right: compactPlayer ? miniPlayInset : 20,
+                    bottom: compactPlayer ? miniBarBottom : aboveBarBottom,
+                    height: 50,
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 180),
                       opacity: hideMiniForSearchKeyboard ? 0 : 1,
@@ -135,7 +167,7 @@ class _FirstPageState extends State<FirstPage> {
                         child: _LiquidMiniPlayer(
                           controller: _playbackController,
                           onOpen: _openPlayer,
-                          compact: _isMiniMode,
+                          compact: compactPlayer,
                         ),
                       ),
                     ),
@@ -143,13 +175,14 @@ class _FirstPageState extends State<FirstPage> {
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 12 + safeBottom,
-                  height: 58,
+                  bottom: safeBottom,
                   child: _LiquidNavBar(
                     selectedIndex: _selected_index,
                     isMiniMode: _isMiniMode,
+                    isSearching: _showSearchPage,
                     onSelected: _navgateBottomBar,
                     onSearch: _openSearch,
+                    onSearchClosed: _closeSearch,
                   ),
                 ),
               ],
@@ -164,14 +197,18 @@ class _FirstPageState extends State<FirstPage> {
 class _LiquidNavBar extends StatefulWidget {
   final int selectedIndex;
   final bool isMiniMode;
+  final bool isSearching;
   final ValueChanged<int> onSelected;
   final VoidCallback onSearch;
+  final VoidCallback onSearchClosed;
 
   const _LiquidNavBar({
     required this.selectedIndex,
     required this.isMiniMode,
+    required this.isSearching,
     required this.onSelected,
     required this.onSearch,
+    required this.onSearchClosed,
   });
 
   @override
@@ -212,13 +249,13 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
   @override
   Widget build(BuildContext context) {
     return GlassSearchableBottomBar(
-      isSearchActive: widget.isMiniMode,
+      isSearchActive: widget.isMiniMode || widget.isSearching,
       selectedIndex: widget.selectedIndex,
       onTabSelected: widget.onSelected,
-      barHeight: 58,
+      barHeight: 64,
       searchBarHeight: 50,
-      horizontalPadding: 18,
-      verticalPadding: 0,
+      horizontalPadding: 20,
+      verticalPadding: 16,
       spacing: 8,
       selectedIconColor: const Color(0xFFFF2D55),
       unselectedIconColor: Colors.white.withOpacity(0.86),
@@ -239,26 +276,29 @@ class _LiquidNavBarState extends State<_LiquidNavBar> {
         focusNode: _searchFocusNode,
         autoFocusOnExpand: false,
         showsCancelButton: true,
-        expandWhenActive: false,
+        expandWhenActive: !widget.isMiniMode || widget.isSearching,
         hintText: 'Apple Music',
         onSearchToggle: (active) {
           if (active) {
             widget.onSearch();
+          } else {
             _searchFocusNode.unfocus();
+            widget.onSearchClosed();
           }
         },
         onSearchFocusChanged: (focused) {
-          if (!focused) return;
-          widget.onSearch();
-          _searchFocusNode.unfocus();
+          if (focused) widget.onSearch();
         },
         searchIconColor: Colors.white.withOpacity(0.86),
         textInputAction: TextInputAction.search,
         collapsedLogoBuilder: (context) {
           final tab = _tabs[widget.selectedIndex];
+          final iconColor = widget.isMiniMode && !widget.isSearching
+              ? const Color(0xFFFF2D55)
+              : Colors.white.withOpacity(0.86);
           return Center(
             child: IconTheme(
-              data: const IconThemeData(color: Color(0xFFFF2D55), size: 28),
+              data: IconThemeData(color: iconColor, size: 28),
               child: tab.activeIcon ?? tab.icon,
             ),
           );
@@ -306,34 +346,32 @@ class _LiquidMiniPlayer extends StatelessWidget {
                 child: _MiniArtwork(controller: controller),
               ),
             ),
-            if (!compact) ...[
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      controller.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    controller.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: compact ? 13 : 14,
                     ),
+                  ),
+                  if (!compact)
                     Text(
                       controller.artist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.white60, fontSize: 12),
                     ),
-                  ],
-                ),
+                ],
               ),
-            ] else
-              const Spacer(),
+            ),
             IconButton(
               onPressed: () => controller.playPause(),
               icon: Icon(
