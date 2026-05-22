@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:musicplayer/Bottom%20NavBar/bottom_nav.dart';
 import 'package:musicplayer/pages/list.dart';
@@ -28,6 +29,11 @@ void main() async {
       statusBarIconBrightness: Brightness.light,
       systemNavigationBarIconBrightness: Brightness.light,
     ),
+  );
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'com.example.musicplayer.channel.audio',
+    androidNotificationChannelName: 'Music playback',
+    androidNotificationOngoing: true,
   );
   await LiquidGlassWidgets.initialize();
   runApp(

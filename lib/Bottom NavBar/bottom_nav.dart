@@ -561,12 +561,16 @@ class _PersistentPlayerSheet extends StatelessWidget {
     final width = MediaQuery.sizeOf(context).width;
     final alpha = progress.clamp(0.0, 1.0).toDouble();
     final navOffset = 64.0 + 16.0 + safeBottom + 14.0;
-    final bottom = lerpDouble(navOffset, 0, alpha)!;
+    final collapsedBottom = isMiniMode ? 16.0 + safeBottom : navOffset;
+    final bottom = lerpDouble(collapsedBottom, 0, alpha)!;
     final horizontalMargin = lerpDouble(isMiniMode ? 76.0 : 16.0, 0, alpha)!;
     final artworkSize = 48.0 + alpha * (width * 0.85 - 48.0);
     final artworkLeft = 16.0 + alpha * ((width - artworkSize) / 2.0 - 16.0);
     final artworkTop = lerpDouble(12.0, _expandedTopArtwork, alpha)!;
     final artworkRadius = 8.0 + alpha * 16.0;
+    final titleLeft = lerpDouble(78.0, 22.0, alpha)!;
+    final titleRight = lerpDouble(74.0, 132.0, alpha)!;
+    final titleTop = lerpDouble(10.0, artworkTop + artworkSize + 30.0, alpha)!;
     final maxiOpacity = _maxiOpacity(alpha);
 
     return Positioned(
@@ -636,9 +640,18 @@ class _PersistentPlayerSheet extends StatelessWidget {
                     ),
                   ),
                   Positioned(
+                    left: titleLeft,
+                    right: titleRight,
+                    top: titleTop,
+                    child: _TransformingTrackTitle(
+                      controller: controller,
+                      progress: alpha,
+                    ),
+                  ),
+                  Positioned(
                     left: 22,
                     right: 22,
-                    top: artworkTop + artworkSize + 30,
+                    top: titleTop,
                     bottom: math.max(18.0, safeBottom + 18),
                     child: IgnorePointer(
                       ignoring: maxiOpacity == 0,
@@ -677,6 +690,50 @@ class _ExpandedPlayerControls extends StatefulWidget {
   State<_ExpandedPlayerControls> createState() => _ExpandedPlayerControlsState();
 }
 
+class _TransformingTrackTitle extends StatelessWidget {
+  final PlaybackController controller;
+  final double progress;
+
+  const _TransformingTrackTitle({
+    required this.controller,
+    required this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final alpha = progress.clamp(0.0, 1.0).toDouble();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          controller.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: lerpDouble(14, 21, alpha),
+            fontWeight: FontWeight.lerp(FontWeight.w700, FontWeight.w800, alpha),
+          ),
+        ),
+        SizedBox(height: lerpDouble(0, 3, alpha)),
+        Opacity(
+          opacity: lerpDouble(0.0, 1.0, alpha)!,
+          child: Text(
+            controller.artist,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white60,
+              fontSize: lerpDouble(12, 15, alpha),
+              fontWeight: FontWeight.lerp(FontWeight.w500, FontWeight.w600, alpha),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
   double _volume = 1.0;
 
@@ -687,35 +744,8 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    controller.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 21,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    controller.artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white60,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
             IconButton(
               onPressed: () {},
               icon: const Icon(CupertinoIcons.star, color: Colors.white70),
@@ -730,7 +760,7 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 34),
         StreamBuilder<Duration>(
           stream: controller.audioPlayer.positionStream,
           initialData: controller.position,
@@ -834,7 +864,7 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
   }
 }
 
-class _CoverArtwork extends StatelessWidget {
+class _CoverArtwork extends StatefulWidget {
   final PlaybackController controller;
   final double width;
   final double height;
@@ -846,7 +876,23 @@ class _CoverArtwork extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<_CoverArtwork> createState() => _CoverArtworkState();
+}
+
+class _CoverArtworkState extends State<_CoverArtwork> {
+  String? _cacheKey;
+  Widget? _cachedArtwork;
+
+  String get _artworkKey {
+    final controller = widget.controller;
+    if (controller.isLocalTrack) {
+      return 'local-${controller.artworkId ?? 'none'}';
+    }
+    return 'remote-${controller.artworkUrl ?? 'none'}';
+  }
+
+  Widget _buildArtwork() {
+    final controller = widget.controller;
     if (controller.isLocalTrack && controller.artworkId != null) {
       return QueryArtworkWidget(
         id: controller.artworkId!,
@@ -865,13 +911,25 @@ class _CoverArtwork extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: controller.artworkUrl!,
         fit: BoxFit.cover,
-        width: width,
-        height: height,
         errorWidget: (_, __, ___) => const _CoverArtworkFallback(),
       );
     }
 
     return const _CoverArtworkFallback();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = _artworkKey;
+    if (_cacheKey != key || _cachedArtwork == null) {
+      _cacheKey = key;
+      _cachedArtwork = _buildArtwork();
+    }
+    return SizedBox(
+      width: widget.width,
+      height: widget.height,
+      child: _cachedArtwork,
+    );
   }
 }
 
@@ -896,7 +954,7 @@ class _CoverArtworkFallback extends StatelessWidget {
   }
 }
 
-class _PlayerArtwork extends StatelessWidget {
+class _PlayerArtwork extends StatefulWidget {
   final PlaybackController controller;
   final double size;
 
@@ -906,7 +964,23 @@ class _PlayerArtwork extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  State<_PlayerArtwork> createState() => _PlayerArtworkState();
+}
+
+class _PlayerArtworkState extends State<_PlayerArtwork> {
+  String? _cacheKey;
+  Widget? _cachedArtwork;
+
+  String get _artworkKey {
+    final controller = widget.controller;
+    if (controller.isLocalTrack) {
+      return 'local-${controller.artworkId ?? 'none'}';
+    }
+    return 'remote-${controller.artworkUrl ?? 'none'}';
+  }
+
+  Widget _buildArtwork() {
+    final controller = widget.controller;
     if (controller.isLocalTrack && controller.artworkId != null) {
       return QueryArtworkWidget(
         id: controller.artworkId!,
@@ -916,8 +990,8 @@ class _PlayerArtwork extends StatelessWidget {
         artworkHeight: 900,
         quality: 100,
         artworkBorder: BorderRadius.zero,
-        nullArtworkWidget: _MiniArtworkFallback(size: size),
-        errorBuilder: (_, __, ___) => _MiniArtworkFallback(size: size),
+        nullArtworkWidget: _MiniArtworkFallback(size: widget.size),
+        errorBuilder: (_, __, ___) => _MiniArtworkFallback(size: widget.size),
       );
     }
 
@@ -925,13 +999,21 @@ class _PlayerArtwork extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: controller.artworkUrl!,
         fit: BoxFit.cover,
-        width: size,
-        height: size,
-        errorWidget: (_, __, ___) => _MiniArtworkFallback(size: size),
+        errorWidget: (_, __, ___) => _MiniArtworkFallback(size: widget.size),
       );
     }
 
-    return _MiniArtworkFallback(size: size);
+    return _MiniArtworkFallback(size: widget.size);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final key = _artworkKey;
+    if (_cacheKey != key || _cachedArtwork == null) {
+      _cacheKey = key;
+      _cachedArtwork = _buildArtwork();
+    }
+    return SizedBox.expand(child: _cachedArtwork);
   }
 }
 

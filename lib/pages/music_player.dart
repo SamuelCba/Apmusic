@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:on_audio_query_forked/on_audio_query.dart';
 
 import '../models/lyrics.dart';
@@ -623,8 +624,21 @@ class _MusicPlayerState extends State<MusicPlayer> {
     );
 
     try {
+      final sourceUrl = song[index]['source'].toString();
+      final imageUrl = song[index]['image']?.toString();
       await audioPlayer.stop();
-      await audioPlayer.setUrl(song[index]['source'].toString());
+      await audioPlayer.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(sourceUrl),
+          tag: MediaItem(
+            id: song[index]['id']?.toString() ?? 'remote-$index',
+            album: song[index]['album']?.toString(),
+            title: song[index]['title'].toString(),
+            artist: song[index]['artist']?.toString(),
+            artUri: imageUrl == null || imageUrl.isEmpty ? null : Uri.tryParse(imageUrl),
+          ),
+        ),
+      );
       await audioPlayer.play();
       await _updatePaletteGenerator(index);
       await _loadLyricsForTrack(
@@ -672,7 +686,17 @@ class _MusicPlayerState extends State<MusicPlayer> {
 
     try {
       await audioPlayer.stop();
-      await audioPlayer.setFilePath(source);
+      await audioPlayer.setAudioSource(
+        AudioSource.uri(
+          Uri.file(source),
+          tag: MediaItem(
+            id: source,
+            album: _localAlbum ?? 'Unknown album',
+            title: _localTitle ?? 'Local track',
+            artist: _localArtist ?? 'Unknown artist',
+          ),
+        ),
+      );
       await audioPlayer.play();
       await _loadLyricsForTrack(
         artist: _localArtist ?? 'Unknown artist',
