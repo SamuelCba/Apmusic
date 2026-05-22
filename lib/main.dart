@@ -20,7 +20,7 @@ void main() async {
   await LiquidGlassWidgets.initialize();
   runApp(
     LiquidGlassWidgets.wrap(
-      child: const MyApp(),
+      const MyApp(),
       adaptiveQuality: true,
     ),
   );

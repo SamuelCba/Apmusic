@@ -84,7 +84,7 @@ class _FirstPageState extends State<FirstPage> {
   }
 }
 
-class _LiquidNavBar extends StatelessWidget {
+class _LiquidNavBar extends StatefulWidget {
   final int selectedIndex;
   final ValueChanged<int> onSelected;
 
@@ -92,6 +92,13 @@ class _LiquidNavBar extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelected,
   });
+
+  @override
+  State<_LiquidNavBar> createState() => _LiquidNavBarState();
+}
+
+class _LiquidNavBarState extends State<_LiquidNavBar> {
+  final FocusNode _searchFocusNode = FocusNode();
 
   static const _tabs = [
     GlassBottomBarTab(
@@ -120,11 +127,17 @@ class _LiquidNavBar extends StatelessWidget {
   ];
 
   @override
+  void dispose() {
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GlassSearchableBottomBar(
       isSearchActive: false,
-      selectedIndex: selectedIndex,
-      onTabSelected: onSelected,
+      selectedIndex: widget.selectedIndex,
+      onTabSelected: widget.onSelected,
       barHeight: 58,
       searchBarHeight: 50,
       horizontalPadding: 18,
@@ -144,6 +157,26 @@ class _LiquidNavBar extends StatelessWidget {
         blur: 3,
         lightIntensity: 0.35,
         chromaticAberration: .01,
+      ),
+      searchConfig: GlassSearchBarConfig(
+        focusNode: _searchFocusNode,
+        autoFocusOnExpand: false,
+        showsCancelButton: true,
+        expandWhenActive: false,
+        hintText: 'Apple Music',
+        onSearchToggle: (active) {
+          if (active) {
+            widget.onSelected(4);
+            _searchFocusNode.unfocus();
+          }
+        },
+        onSearchFocusChanged: (focused) {
+          if (!focused) return;
+          widget.onSelected(4);
+          _searchFocusNode.unfocus();
+        },
+        searchIconColor: Colors.white.withOpacity(0.86),
+        textInputAction: TextInputAction.search,
       ),
       tabs: _tabs,
     );
