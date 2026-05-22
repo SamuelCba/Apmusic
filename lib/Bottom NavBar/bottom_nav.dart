@@ -218,7 +218,7 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
             valueListenable: _playerHeight,
             builder: (context, height, _) {
               final progress = _playerProgress(height, maxPlayerHeight);
-              final miniOpacity = math.max(0.0, 1.0 - 4 * progress);
+              final miniOpacity = progress <= 0.001 ? 1.0 : 0.0;
               return SizedBox(
                 height: (hasTrack ? 152 : 88) + safeBottom,
                 child: Stack(
@@ -233,7 +233,7 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
                         bottom: compactPlayer ? miniBarBottom : aboveBarBottom,
                         height: 50,
                         child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 120),
+                          duration: Duration.zero,
                           opacity: hideMiniForSearchKeyboard ? 0 : miniOpacity,
                           child: IgnorePointer(
                             ignoring: hideMiniForSearchKeyboard || miniOpacity == 0,
@@ -554,8 +554,6 @@ class _PersistentPlayerSheet extends StatelessWidget {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  double _miniOpacity(double alpha) => math.max(0.0, 1.0 - 4 * alpha);
-
   double _maxiOpacity(double alpha) => math.max(0.0, 4 * alpha - 3.0);
 
   @override
@@ -569,7 +567,6 @@ class _PersistentPlayerSheet extends StatelessWidget {
     final artworkLeft = 16.0 + alpha * ((width - artworkSize) / 2.0 - 16.0);
     final artworkTop = lerpDouble(12.0, _expandedTopArtwork, alpha)!;
     final artworkRadius = 8.0 + alpha * 16.0;
-    final miniOpacity = _miniOpacity(alpha);
     final maxiOpacity = _maxiOpacity(alpha);
 
     return Positioned(
@@ -604,7 +601,7 @@ class _PersistentPlayerSheet extends StatelessWidget {
                         child: _CoverArtwork(
                           controller: controller,
                           width: width,
-                          height: height,
+                          height: MediaQuery.sizeOf(context).height,
                         ),
                       ),
                     ),
@@ -635,54 +632,6 @@ class _PersistentPlayerSheet extends StatelessWidget {
                       child: _PlayerArtwork(
                         controller: controller,
                         size: artworkSize,
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      ignoring: miniOpacity == 0,
-                      child: Opacity(
-                        opacity: miniOpacity,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(78, 10, 12, 10),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      controller.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    Text(
-                                      controller.artist,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(color: Colors.white60, fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () => unawaited(controller.playPause()),
-                                icon: Icon(
-                                  controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                              const Icon(CupertinoIcons.forward_end_fill, color: Colors.white60, size: 20),
-                            ],
-                          ),
-                        ),
                       ),
                     ),
                   ),
@@ -903,8 +852,8 @@ class _CoverArtwork extends StatelessWidget {
         id: controller.artworkId!,
         type: ArtworkType.AUDIO,
         artworkFit: BoxFit.cover,
-        artworkWidth: width,
-        artworkHeight: height,
+        artworkWidth: 900,
+        artworkHeight: 900,
         quality: 100,
         artworkBorder: BorderRadius.zero,
         nullArtworkWidget: const _CoverArtworkFallback(),
@@ -963,8 +912,8 @@ class _PlayerArtwork extends StatelessWidget {
         id: controller.artworkId!,
         type: ArtworkType.AUDIO,
         artworkFit: BoxFit.cover,
-        artworkWidth: size,
-        artworkHeight: size,
+        artworkWidth: 900,
+        artworkHeight: 900,
         quality: 100,
         artworkBorder: BorderRadius.zero,
         nullArtworkWidget: _MiniArtworkFallback(size: size),
