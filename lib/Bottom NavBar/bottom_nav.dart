@@ -170,8 +170,8 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
               child: _showSearchPage
                   ? const SearchPage(
                       key: ValueKey('search'),
-                      autoFocus: false,
-                      showSearchField: false,
+                      autoFocus: true,
+                      showSearchField: true,
                     )
                   : KeyedSubtree(
                       key: ValueKey('tab-$_selected_index'),
@@ -218,7 +218,7 @@ class _FirstPageState extends State<FirstPage> with SingleTickerProviderStateMix
           const pillGap = 14.0;
           const collapsedPillW = 50.0;
           final activeNavBarH = _showSearchPage ? collapsedNavBarH : expandedNavBarH;
-          final aboveBarBottom = activeNavBarH + pillGap + safeBottom;
+          final aboveBarBottom = activeNavBarH + pillGap + safeBottom + (_showSearchPage ? 22.0 : 0.0);
           final miniBarBottom = 16.0 + safeBottom;
           final miniPlayInset = 20.0 + collapsedPillW + 6.0;
           final compactPlayer = _isMiniMode && !_showSearchPage;
@@ -585,16 +585,16 @@ class _PersistentPlayerSheet extends StatelessWidget {
     final collapsedBottom = isMiniMode ? 16.0 + safeBottom : navOffset;
     final bottom = lerpDouble(collapsedBottom, 0, alpha)!;
     final horizontalMargin = lerpDouble(isMiniMode ? 76.0 : 16.0, 0, alpha)!;
-    final expandedArtworkSize = queueMode ? 74.0 : width * 0.85;
-    final expandedArtworkLeft = queueMode ? 22.0 : (width - expandedArtworkSize) / 2.0;
-    final expandedArtworkTop = queueMode ? 78.0 : _expandedTopArtwork;
+    final expandedArtworkSize = width * 0.85;
+    final expandedArtworkLeft = (width - expandedArtworkSize) / 2.0;
+    final expandedArtworkTop = _expandedTopArtwork;
     final artworkSize = 48.0 + alpha * (expandedArtworkSize - 48.0);
     final artworkLeft = lerpDouble(16.0, expandedArtworkLeft, alpha)!;
     final artworkTop = lerpDouble(12.0, expandedArtworkTop, alpha)!;
     final artworkRadius = 8.0 + alpha * 16.0;
-    final expandedTitleLeft = queueMode ? 112.0 : 22.0;
-    final expandedTitleRight = queueMode ? 70.0 : 132.0;
-    final expandedTitleTop = queueMode ? 86.0 : artworkTop + artworkSize + 30.0;
+    const expandedTitleLeft = 22.0;
+    const expandedTitleRight = 132.0;
+    final expandedTitleTop = artworkTop + artworkSize + 30.0;
     final titleLeft = lerpDouble(78.0, expandedTitleLeft, alpha)!;
     final titleRight = lerpDouble(74.0, expandedTitleRight, alpha)!;
     final titleTop = lerpDouble(10.0, expandedTitleTop, alpha)!;
@@ -650,6 +650,21 @@ class _PersistentPlayerSheet extends StatelessWidget {
                             gradientColors[2],
                           ],
                           stops: const [0, 0.48, 1],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 11,
+                    left: (width - 42) / 2,
+                    width: 42,
+                    height: 5,
+                    child: Opacity(
+                      opacity: alpha,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.34),
+                          borderRadius: BorderRadius.circular(999),
                         ),
                       ),
                     ),
@@ -794,90 +809,92 @@ class _ExpandedPlayerControlsState extends State<_ExpandedPlayerControls> {
             ),
           ],
         ),
-        const SizedBox(height: 34),
-        if (widget.queueMode) ...[
-          Expanded(
-            child: _InlineQueuePanel(controller: controller),
-          ),
-        ] else ...[
-          StreamBuilder<Duration>(
-            stream: controller.audioPlayer.positionStream,
-            initialData: controller.position,
-            builder: (context, snapshot) {
-              final position = snapshot.data ?? Duration.zero;
-              final duration = controller.duration.inMilliseconds > 0 ? controller.duration : const Duration(seconds: 1);
-              final totalMs = duration.inMilliseconds;
-              final value = position.inMilliseconds.clamp(0, totalMs).toDouble();
-              return Column(
-                children: [
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 4,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
-                      overlayShape: SliderComponentShape.noOverlay,
-                      activeTrackColor: Colors.white.withOpacity(0.78),
-                      inactiveTrackColor: Colors.white.withOpacity(0.24),
+        const SizedBox(height: 52),
+        StreamBuilder<Duration>(
+          stream: controller.audioPlayer.positionStream,
+          initialData: controller.position,
+          builder: (context, snapshot) {
+            final position = snapshot.data ?? Duration.zero;
+            final duration = controller.duration.inMilliseconds > 0 ? controller.duration : const Duration(seconds: 1);
+            final totalMs = duration.inMilliseconds;
+            final value = position.inMilliseconds.clamp(0, totalMs).toDouble();
+            return Column(
+              children: [
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 0),
+                    overlayShape: SliderComponentShape.noOverlay,
+                    activeTrackColor: Colors.white.withOpacity(0.78),
+                    inactiveTrackColor: Colors.white.withOpacity(0.24),
+                  ),
+                  child: Slider(
+                    min: 0,
+                    max: totalMs.toDouble(),
+                    value: value,
+                    onChanged: (ms) {
+                      unawaited(controller.seek(Duration(milliseconds: ms.toInt())));
+                    },
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      widget.formatDuration(position),
+                      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
                     ),
-                    child: Slider(
-                      min: 0,
-                      max: totalMs.toDouble(),
-                      value: value,
-                      onChanged: (ms) {
-                        unawaited(controller.seek(Duration(milliseconds: ms.toInt())));
-                      },
-                   ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        widget.formatDuration(position),
-                        style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                      Text(
-                        '-${widget.formatDuration(duration - position)}',
-                        style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ],
-              );
-            },
-          ),
+                    Text(
+                      '-${widget.formatDuration(duration - position)}',
+                      style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 26),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              onPressed: controller.canGoPrevious ? () => unawaited(controller.skipPrevious()) : null,
+              icon: Icon(
+                CupertinoIcons.backward_end_fill,
+                color: controller.canGoPrevious ? Colors.white54 : Colors.white24,
+                size: 38,
+              ),
+            ),
+            const SizedBox(width: 30),
+            IconButton(
+              onPressed: () => unawaited(controller.playPause()),
+              icon: Icon(
+                controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
+                color: Colors.white,
+                size: 70,
+              ),
+            ),
+            const SizedBox(width: 30),
+            IconButton(
+              onPressed: controller.canGoNext ? () => unawaited(controller.skipNext()) : null,
+              icon: Icon(
+                CupertinoIcons.forward_end_fill,
+                color: controller.canGoNext ? Colors.white54 : Colors.white24,
+                size: 38,
+              ),
+            ),
+          ],
+        ),
+        if (widget.queueMode)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 10),
+              child: _InlineQueuePanel(controller: controller),
+            ),
+          )
+        else
           const Spacer(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                onPressed: controller.canGoPrevious ? () => unawaited(controller.skipPrevious()) : null,
-                icon: Icon(
-                  CupertinoIcons.backward_end_fill,
-                  color: controller.canGoPrevious ? Colors.white54 : Colors.white24,
-                  size: 38,
-                ),
-              ),
-              const SizedBox(width: 30),
-              IconButton(
-                onPressed: () => unawaited(controller.playPause()),
-                icon: Icon(
-                  controller.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_arrow_solid,
-                  color: Colors.white,
-                  size: 70,
-                ),
-              ),
-              const SizedBox(width: 30),
-              IconButton(
-                onPressed: controller.canGoNext ? () => unawaited(controller.skipNext()) : null,
-                icon: Icon(
-                  CupertinoIcons.forward_end_fill,
-                  color: controller.canGoNext ? Colors.white54 : Colors.white24,
-                  size: 38,
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-        ],
         Row(
           children: [
             const Icon(Icons.volume_down_rounded, color: Colors.white54, size: 20),
@@ -933,33 +950,36 @@ class _InlineQueuePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLocal = controller.localQueue.isNotEmpty;
-    final itemCount = isLocal ? controller.localQueue.length : controller.remoteQueue.length;
+    final currentLocalIndex = isLocal ? controller.localQueue.indexWhere((song) => song.data == controller.source) : -1;
+    final startIndex = isLocal ? math.max(0, currentLocalIndex + 1) : (controller.remoteIndex ?? -1) + 1;
+    final queueLength = isLocal ? controller.localQueue.length : controller.remoteQueue.length;
+    final itemCount = math.max(0, queueLength - startIndex);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Continue Playing',
+          'Up Next',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 22,
+            fontSize: 19,
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 1),
         Text(
           isLocal ? 'From Library' : 'From Apple Music',
           style: const TextStyle(
             color: Colors.white54,
-            fontSize: 15,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 8),
         Expanded(
           child: itemCount == 0
               ? const Center(
                   child: Text(
-                    'No queue available',
+                    'No more songs',
                     style: TextStyle(color: Colors.white54),
                   ),
                 )
@@ -967,21 +987,20 @@ class _InlineQueuePanel extends StatelessWidget {
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.zero,
                   itemCount: itemCount,
-                  itemBuilder: (context, index) {
+                  itemBuilder: (context, offset) {
+                    final index = startIndex + offset;
                     if (isLocal) {
                       final song = controller.localQueue[index];
-                      final selected = song.data == controller.source;
                       return _InlineLocalQueueTile(
                         song: song,
-                        selected: selected,
+                        selected: false,
                         onTap: () => unawaited(controller.playLocalQueue(controller.localQueue, index)),
                       );
                     }
                     final song = controller.remoteQueue[index];
-                    final selected = index == controller.remoteIndex;
                     return _InlineRemoteQueueTile(
                       song: song,
-                      selected: selected,
+                      selected: false,
                       onTap: () => unawaited(controller.playRemoteQueue(controller.remoteQueue, index)),
                     );
                   },
@@ -1009,16 +1028,16 @@ class _InlineLocalQueueTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(5),
               child: QueryArtworkWidget(
                 id: song.id,
                 type: ArtworkType.AUDIO,
-                artworkWidth: 48,
-                artworkHeight: 48,
+                artworkWidth: 46,
+                artworkHeight: 46,
                 artworkFit: BoxFit.cover,
                 quality: 100,
                 nullArtworkWidget: const _SmallArtworkFallback(),
@@ -1063,14 +1082,14 @@ class _InlineRemoteQueueTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(5),
               child: SizedBox(
-                width: 48,
-                height: 48,
+                width: 46,
+                height: 46,
                 child: imageUrl == null || imageUrl.isEmpty
                     ? const _SmallArtworkFallback()
                     : CachedNetworkImage(

@@ -77,9 +77,9 @@ class PlaybackController extends ChangeNotifier {
   final Map<int, Uint8List?> _localArtworkBytesCache = {};
   final Map<int, Uri?> _localArtworkUriCache = {};
   List<Color> backgroundGradient = const [
-    Color(0xFF5A421B),
-    Color(0xFF242426),
-    Color(0xFF121212),
+    Color(0xFF8A6230),
+    Color(0xFF3A332E),
+    Color(0xFF181818),
   ];
   int _paletteRequestId = 0;
 
@@ -154,9 +154,9 @@ class PlaybackController extends ChangeNotifier {
   void _setFallbackPalette() {
     _paletteRequestId++;
     backgroundGradient = const [
-      Color(0xFF5A421B),
-      Color(0xFF242426),
-      Color(0xFF121212),
+      Color(0xFF8A6230),
+      Color(0xFF3A332E),
+      Color(0xFF181818),
     ];
     notifyListeners();
   }
@@ -177,17 +177,17 @@ class PlaybackController extends ChangeNotifier {
           palette.darkVibrantColor?.color ??
           primary;
       backgroundGradient = [
-        _deepen(primary, 0.44),
-        _deepen(secondary, 0.62),
-        const Color(0xFF121212),
+        _deepen(primary, 0.22),
+        _deepen(secondary, 0.34),
+        const Color(0xFF181818),
       ];
       notifyListeners();
     } catch (_) {
       if (requestId == _paletteRequestId) {
         backgroundGradient = const [
-          Color(0xFF5A421B),
-          Color(0xFF242426),
-          Color(0xFF121212),
+          Color(0xFF8A6230),
+          Color(0xFF3A332E),
+          Color(0xFF181818),
         ];
         notifyListeners();
       }
